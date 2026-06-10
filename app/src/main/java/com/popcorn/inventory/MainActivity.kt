@@ -511,8 +511,8 @@ private fun ReportesScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         item {
             FechaHeader(
                 fecha = fecha,
-                onAnterior = { vm.cambiarFecha(-if (tipo == TipoReporte.SEMANA) 7 else 1) },
-                onSiguiente = { vm.cambiarFecha(if (tipo == TipoReporte.SEMANA) 7 else 1) },
+                onAnterior = { vm.cambiarFecha(if (tipo == TipoReporte.SEMANA) -7L else -1L) },
+                onSiguiente = { vm.cambiarFecha(if (tipo == TipoReporte.SEMANA) 7L else 1L) },
                 onHoy = { vm.hoy() }
             )
         }
