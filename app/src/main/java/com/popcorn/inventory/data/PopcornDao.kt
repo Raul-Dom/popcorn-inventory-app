@@ -1,0 +1,89 @@
+package com.popcorn.inventory.data
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface PopcornDao {
+    @Query("SELECT * FROM configuracion WHERE id = 1")
+    fun observeConfiguracion(): Flow<ConfiguracionEntity?>
+
+    @Query("SELECT * FROM configuracion WHERE id = 1")
+    suspend fun getConfiguracion(): ConfiguracionEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertConfiguracion(configuracion: ConfiguracionEntity)
+
+    @Query("SELECT * FROM sabores ORDER BY activo DESC, nombre COLLATE NOCASE ASC")
+    fun observeSabores(): Flow<List<SaborEntity>>
+
+    @Query("SELECT * FROM sabores WHERE activo = 1 ORDER BY nombre COLLATE NOCASE ASC")
+    fun observeSaboresActivos(): Flow<List<SaborEntity>>
+
+    @Query("SELECT * FROM sabores WHERE id = :id")
+    suspend fun getSabor(id: Long): SaborEntity?
+
+    @Insert
+    suspend fun insertSabor(sabor: SaborEntity): Long
+
+    @Update
+    suspend fun updateSabor(sabor: SaborEntity)
+
+    @Query("UPDATE sabores SET inventarioActual = inventarioActual + :cantidad WHERE id = :saborId")
+    suspend fun sumarInventario(saborId: Long, cantidad: Int)
+
+    @Query("UPDATE sabores SET activo = 0 WHERE id = :saborId")
+    suspend fun desactivarSabor(saborId: Long)
+
+    @Query("UPDATE sabores SET precioVenta = :precio, precioPersonalizado = 1 WHERE id IN (:saborIds)")
+    suspend fun actualizarPreciosSeleccion(saborIds: List<Long>, precio: Double)
+
+    @Query("UPDATE sabores SET precioVenta = :precio, precioPersonalizado = 0 WHERE categoria IN (:categorias) AND activo = 1")
+    suspend fun actualizarPreciosCategorias(categorias: List<String>, precio: Double)
+
+    @Query("SELECT * FROM promociones ORDER BY activa DESC, creadaEn DESC")
+    fun observePromociones(): Flow<List<PromocionEntity>>
+
+    @Transaction
+    @Query("SELECT * FROM promociones ORDER BY activa DESC, creadaEn DESC")
+    fun observePromocionesConSabores(): Flow<List<PromocionConSabores>>
+
+    @Query("SELECT * FROM promociones WHERE id = :id")
+    suspend fun getPromocion(id: Long): PromocionEntity?
+
+    @Insert
+    suspend fun insertPromocion(promocion: PromocionEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPromocionSabores(sabores: List<PromocionSaborEntity>)
+
+    @Query("UPDATE promociones SET activa = 0 WHERE id = :promocionId")
+    suspend fun desactivarPromocion(promocionId: Long)
+
+    @Insert
+    suspend fun insertVenta(venta: VentaEntity): Long
+
+    @Insert
+    suspend fun insertDetallesVenta(detalles: List<DetalleVentaEntity>)
+
+    @Insert
+    suspend fun insertMovimiento(movimiento: MovimientoInventarioEntity): Long
+
+    @Query("SELECT * FROM ventas WHERE anulada = 0 AND fechaVenta BETWEEN :inicio AND :fin ORDER BY fechaVenta DESC, fechaRegistro DESC")
+    fun observeVentasEntre(inicio: Long, fin: Long): Flow<List<VentaEntity>>
+
+    @Transaction
+    @Query("SELECT * FROM ventas WHERE anulada = 0 AND fechaVenta BETWEEN :inicio AND :fin ORDER BY fechaVenta DESC, fechaRegistro DESC")
+    fun observeVentasConDetallesEntre(inicio: Long, fin: Long): Flow<List<VentaConDetalles>>
+
+    @Query("SELECT * FROM movimientos_inventario WHERE anulado = 0 ORDER BY fechaMovimiento DESC, fechaRegistro DESC LIMIT :limite")
+    fun observeMovimientosRecientes(limite: Int = 80): Flow<List<MovimientoInventarioEntity>>
+
+    @Query("SELECT * FROM movimientos_inventario WHERE anulado = 0 AND fechaMovimiento BETWEEN :inicio AND :fin ORDER BY fechaMovimiento DESC, fechaRegistro DESC")
+    fun observeMovimientosEntre(inicio: Long, fin: Long): Flow<List<MovimientoInventarioEntity>>
+}
