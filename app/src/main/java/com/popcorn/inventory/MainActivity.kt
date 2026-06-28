@@ -177,7 +177,7 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         item {
             CategoriaFiltro(categoria, onCategoria = { categoria = it })
         }
-        items(saboresFiltrados, key = { it.id }) { sabor ->
+        items(saboresFiltrados, key = { sabor -> "sabor-${sabor.id}" }) { sabor ->
             val item = resumenPorId[sabor.id]
             SaborVentaCard(
                 sabor = sabor,
@@ -193,7 +193,7 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         if (ventas.isEmpty()) {
             item { EmptyState("No hay ventas registradas para esta fecha.") }
         } else {
-            items(ventas, key = { it.venta.id }) { venta ->
+            items(ventas, key = { venta -> "venta-${venta.venta.id}" }) { venta ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
