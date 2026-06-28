@@ -6,7 +6,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -57,12 +59,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.popcorn.inventory.data.CategoriaSabor
-import com.popcorn.inventory.data.ConfiguracionEntity
 import com.popcorn.inventory.data.MovimientoInventarioEntity
 import com.popcorn.inventory.data.PromocionConSabores
 import com.popcorn.inventory.data.PromocionEntity
 import com.popcorn.inventory.data.SaborEntity
 import com.popcorn.inventory.data.SaborResumen
+import com.popcorn.inventory.data.SaborVendido
 import com.popcorn.inventory.data.TipoMovimiento
 import com.popcorn.inventory.data.VentaConDetalles
 import com.popcorn.inventory.data.VentaLineaInput
@@ -73,6 +75,7 @@ import com.popcorn.inventory.ui.formatoUnidades
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -512,16 +515,6 @@ private fun ConfiguracionScreen(vm: MainViewModel, modifier: Modifier = Modifier
             }
         }
         item {
-            OutlinedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Preferencias", style = MaterialTheme.typography.titleMedium)
-                    Text("Alerta de inventario bajo: ${config.umbralInventarioBajo} bolsas o menos")
-                    Text("Fecha: 09/Junio/26")
-                    Text("Dinero: ${1234.56.formatoDinero()}")
-                }
-            }
-        }
-        item {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -661,6 +654,11 @@ private fun ReportesScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 pedidoSugeridoTotal = reporte.pedidoSugeridoTotal
             )
         }
+        if (reporte.saboresMasVendidos.isNotEmpty()) {
+            item {
+                GraficasReporteCard(reporte.saboresMasVendidos)
+            }
+        }
         item {
             Text("Sabores más vendidos", style = MaterialTheme.typography.titleMedium)
         }
@@ -779,6 +777,63 @@ private fun ResumenDato(etiqueta: String, valor: String) {
     Column {
         Text(etiqueta, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f), style = MaterialTheme.typography.bodySmall)
         Text(valor, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun GraficasReporteCard(sabores: List<SaborVendido>) {
+    OutlinedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("Gráficas del periodo", style = MaterialTheme.typography.titleMedium)
+            BarrasReporte(
+                titulo = "Bolsas vendidas",
+                sabores = sabores.sortedByDescending { it.unidades },
+                valor = { it.unidades.toDouble() },
+                textoValor = { "${it.unidades.formatoUnidades()} bolsas" }
+            )
+            BarrasReporte(
+                titulo = "Dinero vendido",
+                sabores = sabores.sortedByDescending { it.dinero },
+                valor = { it.dinero },
+                textoValor = { it.dinero.formatoDinero() }
+            )
+        }
+    }
+}
+
+@Composable
+private fun BarrasReporte(
+    titulo: String,
+    sabores: List<SaborVendido>,
+    valor: (SaborVendido) -> Double,
+    textoValor: (SaborVendido) -> String
+) {
+    val visibles = sabores.take(8)
+    val maximo = visibles.maxOfOrNull { valor(it) }?.takeIf { it > 0.0 } ?: 1.0
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(titulo, fontWeight = FontWeight.SemiBold)
+        visibles.forEach { sabor ->
+            val fraccion = (valor(sabor) / maximo).toFloat().coerceIn(0.04f, 1f)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(sabor.nombre, style = MaterialTheme.typography.bodySmall)
+                    Text(textoValor(sabor), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(fraccion)
+                            .height(10.dp)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1595,13 +1650,13 @@ private fun FechaPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (LocalDate) -> Unit
 ) {
-    val state = rememberDatePickerState(initialSelectedDateMillis = fechaInicial.aMillisLocales())
+    val state = rememberDatePickerState(initialSelectedDateMillis = fechaInicial.aMillisCalendario())
     DatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
                 onClick = {
-                    state.selectedDateMillis?.let { onConfirm(it.aFechaLocal()) }
+                    state.selectedDateMillis?.let { onConfirm(it.aFechaCalendario()) }
                 }
             ) { Text("Aceptar") }
         },
@@ -1655,8 +1710,11 @@ private fun MesAnioDialog(
     )
 }
 
-private fun LocalDate.aMillisLocales(): Long =
-    atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+private fun LocalDate.aMillisCalendario(): Long =
+    atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+private fun Long.aFechaCalendario(): LocalDate =
+    Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
 
 private fun Long.aFechaLocal(): LocalDate =
     Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault()).toLocalDate()

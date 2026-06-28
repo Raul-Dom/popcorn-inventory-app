@@ -35,6 +35,8 @@ Cambios principales incluidos:
 - Se agrego soporte para ventas por promocion.
 - Se agrego edicion/correccion directa de ventas y movimientos.
 - Se quitaron controles de configuracion que no hacian nada, como `Pequeno`, `Mediano` y `Grande`.
+- Se corrigio el desfase de un dia al elegir fechas desde calendarios.
+- Se agregaron graficas simples en Reportes para ver bolsas vendidas y dinero vendido por sabor.
 - Se configuro una firma debug estable para que futuras versiones puedan actualizarse sobre la anterior despues de la reinstalacion inicial necesaria.
 
 ## Evolucion del Proyecto
@@ -90,6 +92,19 @@ Se cambio el nombre visible de la app a `La Pop-Pería`.
 Tambien se quito de Configuracion la seccion de tamano de interfaz (`Pequeno`, `Mediano`, `Grande`) porque no tenia efecto real sobre la app. Mantenerla visible confundia mas de lo que ayudaba.
 
 Resultado: la pantalla de Configuracion queda mas honesta y clara.
+
+### Etapa 6 - Fechas y Reportes Visuales
+
+Se corrigio el problema donde seleccionar una fecha en el calendario regresaba el dia anterior. La causa era una conversion entre UTC y zona horaria local dentro del selector de fechas de Material.
+
+Tambien se agregaron graficas simples en Reportes:
+
+- Bolsas vendidas por sabor.
+- Dinero vendido por sabor.
+
+Las graficas usan el mismo periodo elegido en Reportes: dia, semana, mes o rango.
+
+Resultado: los reportes ahora permiten revisar mas rapido que se vendio y cuanto se vendio, sin depender solo de una lista.
 
 ## Decisiones Importantes
 
@@ -167,6 +182,8 @@ Antes de usar datos reales de forma definitiva, conviene probar:
 - Registrar merma/cortesia/correccion.
 - Revisar que el inventario suba o baje correctamente.
 - Revisar reportes por dia, semana, mes y rango.
+- Confirmar que al elegir una fecha se queda exactamente el dia seleccionado.
+- Confirmar que las graficas de reportes coinciden con la lista de sabores vendidos.
 - Confirmar que el scroll de Ventas ya no cierre la app.
 
 ## Hacia Donde Va
