@@ -13,11 +13,25 @@ android {
         applicationId = "com.popcorn.inventory"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("../signing/popcorn-debug.p12")
+            storePassword = "android"
+            keyAlias = "1"
+            keyPassword = "android"
+            storeType = "pkcs12"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+
         release {
             isMinifyEnabled = false
             proguardFiles(

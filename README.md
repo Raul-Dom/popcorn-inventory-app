@@ -62,6 +62,14 @@ La forma más simple es usar GitHub Actions:
 
 Este APK es de prueba (`debug`), suficiente para instalarlo en tu celular y validar el flujo básico con datos falsos.
 
+## Si Android dice que hay conflicto de paquete
+
+Si aparece el mensaje `App not installed as package conflicts with an existing package`, significa que el APK nuevo y la app instalada tienen el mismo paquete Android, pero fueron firmados con llaves distintas.
+
+Desde la versión `1.1`, los APK debug de GitHub Actions usan una llave estable incluida en `signing/popcorn-debug.p12`. Eso permite actualizar encima en futuras versiones.
+
+Para pasar desde una versión anterior a la versión `1.1`, puede ser necesario desinstalar una vez la app anterior y luego instalar el APK nuevo. Esto borra los datos locales de prueba guardados en el celular.
+
 ## Datos falsos para probar el flujo básico
 
 Después de instalar la app, puedes capturar estos sabores de prueba:
