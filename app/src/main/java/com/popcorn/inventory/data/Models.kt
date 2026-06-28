@@ -52,3 +52,9 @@ data class SaborVendido(
     val unidades: Int,
     val dinero: Double
 )
+
+data class VentaLineaInput(
+    val sabor: SaborEntity,
+    val cantidad: Int,
+    val precioUnitario: Double = sabor.precioVenta
+)

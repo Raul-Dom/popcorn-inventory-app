@@ -26,6 +26,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -40,6 +42,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,17 +58,22 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.popcorn.inventory.data.CategoriaSabor
 import com.popcorn.inventory.data.ConfiguracionEntity
+import com.popcorn.inventory.data.MovimientoInventarioEntity
 import com.popcorn.inventory.data.PromocionConSabores
 import com.popcorn.inventory.data.PromocionEntity
 import com.popcorn.inventory.data.SaborEntity
 import com.popcorn.inventory.data.SaborResumen
 import com.popcorn.inventory.data.TamanoInterfaz
 import com.popcorn.inventory.data.TipoMovimiento
+import com.popcorn.inventory.data.VentaConDetalles
+import com.popcorn.inventory.data.VentaLineaInput
 import com.popcorn.inventory.ui.PopcornTheme
 import com.popcorn.inventory.ui.formatoDinero
 import com.popcorn.inventory.ui.formatoFechaNegocio
 import com.popcorn.inventory.ui.formatoUnidades
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,6 +95,12 @@ private enum class AppTab(val titulo: String, val icono: String) {
     REPORTES("Reportes", "%")
 }
 
+private data class VentaLineaUi(
+    val id: Int,
+    val saborId: Long?,
+    val cantidad: String
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PopcornInventoryApp(vm: MainViewModel = viewModel()) {
@@ -96,7 +110,7 @@ private fun PopcornInventoryApp(vm: MainViewModel = viewModel()) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Inventario de palomitas", fontWeight = FontWeight.SemiBold)
+                        Text("La Pop-Pería", fontWeight = FontWeight.SemiBold)
                         Text("Ventas físicas y control por bolsas", style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -139,11 +153,15 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     var categoria by remember { mutableStateOf("TODAS") }
     var ventaNormalSabor by remember { mutableStateOf<SaborEntity?>(null) }
     var ventaPromoSabor by remember { mutableStateOf<SaborEntity?>(null) }
+    var mostrarAgregarVenta by remember { mutableStateOf(false) }
+    var ventaEditando by remember { mutableStateOf<VentaConDetalles?>(null) }
 
-    val resumenPorId = resumen.associateBy { it.id }
-    val saboresFiltrados = sabores.filter {
-        (categoria == "TODAS" || it.categoria == categoria) &&
-            it.nombre.contains(busqueda, ignoreCase = true)
+    val resumenPorId = remember(resumen) { resumen.associateBy { it.id } }
+    val saboresFiltrados = remember(sabores, categoria, busqueda) {
+        sabores.filter {
+            (categoria == "TODAS" || it.categoria == categoria) &&
+                it.nombre.contains(busqueda, ignoreCase = true)
+        }
     }
 
     LazyColumn(
@@ -155,8 +173,22 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 fecha = fecha,
                 onAnterior = { vm.cambiarFecha(-1) },
                 onSiguiente = { vm.cambiarFecha(1) },
-                onHoy = { vm.hoy() }
+                onHoy = { vm.hoy() },
+                onSeleccionarFecha = { vm.seleccionarFecha(it) }
             )
+        }
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Ventas", style = MaterialTheme.typography.headlineSmall)
+                    Text("Captura una o varias líneas", style = MaterialTheme.typography.bodyMedium)
+                }
+                Button(onClick = { mostrarAgregarVenta = true }) { Text("Agregar venta") }
+            }
         }
         item {
             ResumenVentasCard(
@@ -204,6 +236,14 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                             if (venta.venta.promocionId == null) "Venta normal" else "Venta con promoción",
                             style = MaterialTheme.typography.bodySmall
                         )
+                        Text(
+                            venta.detalles.joinToString { detalle ->
+                                val nombre = sabores.firstOrNull { it.id == detalle.saborId }?.nombre ?: "Sabor inactivo"
+                                "$nombre x${detalle.cantidad.formatoUnidades()}"
+                            },
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        OutlinedButton(onClick = { ventaEditando = venta }) { Text("Editar") }
                     }
                 }
             }
@@ -233,12 +273,46 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             }
         )
     }
+    if (mostrarAgregarVenta) {
+        VentaLineasDialog(
+            titulo = "Agregar venta",
+            fechaInicial = fecha,
+            sabores = sabores,
+            promociones = promociones,
+            ventaInicial = null,
+            onDismiss = { mostrarAgregarVenta = false },
+            onGuardar = { fechaVenta, promocion, lineas ->
+                if (promocion == null) {
+                    vm.registrarVentaLineas(lineas, fechaVenta)
+                } else {
+                    vm.registrarVentaPromocionLineas(promocion, lineas, fechaVenta)
+                }
+                mostrarAgregarVenta = false
+            }
+        )
+    }
+
+    ventaEditando?.let { venta ->
+        VentaLineasDialog(
+            titulo = "Editar venta",
+            fechaInicial = venta.venta.fechaVenta.aFechaLocal(),
+            sabores = sabores,
+            promociones = promociones,
+            ventaInicial = venta,
+            onDismiss = { ventaEditando = null },
+            onGuardar = { fechaVenta, promocion, lineas ->
+                vm.actualizarVenta(venta.venta, lineas, fechaVenta, promocion)
+                ventaEditando = null
+            }
+        )
+    }
 }
 
 @Composable
 private fun InventarioScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val resumen by vm.saboresResumen.collectAsState()
     val sabores by vm.sabores.collectAsState()
+    val movimientos by vm.movimientosRecientes.collectAsState()
     var busqueda by remember { mutableStateOf("") }
     var categoria by remember { mutableStateOf("TODAS") }
     var mostrarInactivos by remember { mutableStateOf(false) }
@@ -246,12 +320,15 @@ private fun InventarioScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     var nuevoSabor by remember { mutableStateOf(false) }
     var pedidoSabor by remember { mutableStateOf<SaborResumen?>(null) }
     var ajusteSabor by remember { mutableStateOf<SaborResumen?>(null) }
+    var movimientoEditando by remember { mutableStateOf<MovimientoInventarioEntity?>(null) }
 
-    val saboresPorId = sabores.associateBy { it.id }
-    val filtrados = resumen.filter {
-        (mostrarInactivos || it.activo) &&
-            (categoria == "TODAS" || it.categoria == categoria) &&
-            it.nombre.contains(busqueda, ignoreCase = true)
+    val saboresPorId = remember(sabores) { sabores.associateBy { it.id } }
+    val filtrados = remember(resumen, mostrarInactivos, categoria, busqueda) {
+        resumen.filter {
+            (mostrarInactivos || it.activo) &&
+                (categoria == "TODAS" || it.categoria == categoria) &&
+                it.nombre.contains(busqueda, ignoreCase = true)
+        }
     }
 
     LazyColumn(
@@ -302,6 +379,18 @@ private fun InventarioScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 )
             }
         }
+        if (movimientos.isNotEmpty()) {
+            item {
+                Text("Movimientos recientes", style = MaterialTheme.typography.titleMedium)
+            }
+            items(movimientos, key = { movimiento -> "mov-${movimiento.id}" }) { movimiento ->
+                MovimientoInventarioCard(
+                    movimiento = movimiento,
+                    saborNombre = saboresPorId[movimiento.saborId]?.nombre ?: "Sabor inactivo",
+                    onEditar = { movimientoEditando = movimiento }
+                )
+            }
+        }
         item { Spacer(Modifier.height(12.dp)) }
     }
 
@@ -329,7 +418,7 @@ private fun InventarioScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 editando = null
             },
             onDesactivar = {
-                vm.desactivarSabor(sabor.id)
+                vm.borrarODesactivarSabor(sabor.id)
                 editando = null
             }
         )
@@ -355,6 +444,18 @@ private fun InventarioScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             onConfirm = { tipo, cantidad, motivo ->
                 vm.registrarAjuste(sabor.id, tipo, cantidad, motivo)
                 ajusteSabor = null
+            }
+        )
+    }
+
+    movimientoEditando?.let { movimiento ->
+        MovimientoEditDialog(
+            movimiento = movimiento,
+            sabores = sabores.filter { it.activo },
+            onDismiss = { movimientoEditando = null },
+            onGuardar = { saborId, tipo, cantidad, fecha, motivo ->
+                vm.actualizarMovimiento(movimiento.id, saborId, tipo, cantidad, fecha, motivo)
+                movimientoEditando = null
             }
         )
     }
@@ -489,6 +590,9 @@ private fun ReportesScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val inicioRango by vm.inicioRango.collectAsState()
     val finRango by vm.finRango.collectAsState()
     val reporte by vm.reporteActual.collectAsState()
+    var elegirInicio by remember { mutableStateOf(false) }
+    var elegirFin by remember { mutableStateOf(false) }
+    var elegirMes by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier.padding(horizontal = 16.dp),
@@ -513,8 +617,17 @@ private fun ReportesScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 fecha = fecha,
                 onAnterior = { vm.cambiarFecha(if (tipo == TipoReporte.SEMANA) -7L else -1L) },
                 onSiguiente = { vm.cambiarFecha(if (tipo == TipoReporte.SEMANA) 7L else 1L) },
-                onHoy = { vm.hoy() }
+                onHoy = { vm.hoy() },
+                onSeleccionarFecha = { vm.seleccionarFecha(it) }
             )
+        }
+        if (tipo == TipoReporte.MES) {
+            item {
+                OutlinedButton(
+                    onClick = { elegirMes = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Elegir mes y año") }
+            }
         }
         if (tipo == TipoReporte.RANGO) {
             item {
@@ -530,6 +643,7 @@ private fun ReportesScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Inicio")
                                 Text(inicioRango.formatoFechaNegocio(), fontWeight = FontWeight.SemiBold)
+                                TextButton(onClick = { elegirInicio = true }) { Text("Elegir") }
                             }
                             OutlinedButton(onClick = { vm.inicioRango.value = inicioRango.plusDays(1) }) { Text(">") }
                         }
@@ -542,6 +656,7 @@ private fun ReportesScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Fin")
                                 Text(finRango.formatoFechaNegocio(), fontWeight = FontWeight.SemiBold)
+                                TextButton(onClick = { elegirFin = true }) { Text("Elegir") }
                             }
                             OutlinedButton(onClick = { vm.finRango.value = finRango.plusDays(1) }) { Text(">") }
                         }
@@ -579,6 +694,38 @@ private fun ReportesScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         }
         item { Spacer(Modifier.height(12.dp)) }
     }
+
+    if (elegirInicio) {
+        FechaPickerDialog(
+            fechaInicial = inicioRango,
+            onDismiss = { elegirInicio = false },
+            onConfirm = {
+                vm.inicioRango.value = it
+                elegirInicio = false
+            }
+        )
+    }
+    if (elegirFin) {
+        FechaPickerDialog(
+            fechaInicial = finRango,
+            onDismiss = { elegirFin = false },
+            onConfirm = {
+                vm.finRango.value = it
+                elegirFin = false
+            }
+        )
+    }
+    if (elegirMes) {
+        MesAnioDialog(
+            fechaInicial = fecha,
+            onDismiss = { elegirMes = false },
+            onConfirm = {
+                vm.seleccionarFecha(it.withDayOfMonth(1))
+                elegirMes = false
+            }
+        )
+    }
+
 }
 
 @Composable
@@ -586,8 +733,10 @@ private fun FechaHeader(
     fecha: LocalDate,
     onAnterior: () -> Unit,
     onSiguiente: () -> Unit,
-    onHoy: () -> Unit
+    onHoy: () -> Unit,
+    onSeleccionarFecha: (LocalDate) -> Unit
 ) {
+    var mostrarCalendario by remember { mutableStateOf(false) }
     OutlinedCard(Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth().padding(12.dp),
@@ -597,11 +746,25 @@ private fun FechaHeader(
             OutlinedButton(onClick = onAnterior) { Text("<") }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(fecha.formatoFechaNegocio(), fontWeight = FontWeight.SemiBold)
-                TextButton(onClick = onHoy) { Text("Hoy") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { mostrarCalendario = true }) { Text("Elegir") }
+                    TextButton(onClick = onHoy) { Text("Hoy") }
+                }
             }
             OutlinedButton(onClick = onSiguiente) { Text(">") }
         }
     }
+    if (mostrarCalendario) {
+        FechaPickerDialog(
+            fechaInicial = fecha,
+            onDismiss = { mostrarCalendario = false },
+            onConfirm = {
+                onSeleccionarFecha(it)
+                mostrarCalendario = false
+            }
+        )
+    }
+
 }
 
 @Composable
@@ -716,6 +879,30 @@ private fun SaborInventarioCard(
 }
 
 @Composable
+private fun MovimientoInventarioCard(
+    movimiento: MovimientoInventarioEntity,
+    saborNombre: String,
+    onEditar: () -> Unit
+) {
+    OutlinedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text(saborNombre, fontWeight = FontWeight.SemiBold)
+                    Text(movimiento.tipo.nombreMovimiento(), style = MaterialTheme.typography.bodySmall)
+                }
+                Text("${movimiento.cantidad.formatoUnidades()} bolsas", fontWeight = FontWeight.Bold)
+            }
+            Text(movimiento.fechaMovimiento.aFechaLocal().formatoFechaNegocio(), style = MaterialTheme.typography.bodySmall)
+            movimiento.motivo?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+            OutlinedButton(onClick = onEditar) { Text("Editar movimiento") }
+        }
+    }
+}
+
+@Composable
 private fun EmptyState(texto: String) {
     OutlinedCard(Modifier.fillMaxWidth()) {
         Text(
@@ -724,6 +911,236 @@ private fun EmptyState(texto: String) {
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
         )
     }
+}
+
+@Composable
+private fun VentaLineasDialog(
+    titulo: String,
+    fechaInicial: LocalDate,
+    sabores: List<SaborEntity>,
+    promociones: List<PromocionConSabores>,
+    ventaInicial: VentaConDetalles?,
+    onDismiss: () -> Unit,
+    onGuardar: (LocalDate, PromocionEntity?, List<VentaLineaInput>) -> Unit
+) {
+    var fechaVenta by remember { mutableStateOf(fechaInicial) }
+    var mostrarCalendario by remember { mutableStateOf(false) }
+    var esPromocion by remember { mutableStateOf(ventaInicial?.venta?.promocionId != null) }
+    var promocionSeleccionada by remember {
+        mutableStateOf(promociones.firstOrNull { it.promocion.id == ventaInicial?.venta?.promocionId })
+    }
+    var selectorLineaId by remember { mutableStateOf<Int?>(null) }
+    val lineasIniciales = (ventaInicial?.detalles?.size ?: 1).coerceAtLeast(1)
+    var siguienteId by remember(ventaInicial) { mutableStateOf(lineasIniciales + 1) }
+    val lineas = remember(ventaInicial, sabores) {
+        mutableStateListOf<VentaLineaUi>().apply {
+            if (ventaInicial != null) {
+                ventaInicial.detalles.forEachIndexed { index, detalle ->
+                    add(VentaLineaUi(index + 1, detalle.saborId, detalle.cantidad.toString()))
+                }
+            }
+            if (isEmpty()) add(VentaLineaUi(1, null, "1"))
+        }
+    }
+    val promo = if (esPromocion) promocionSeleccionada?.promocion else null
+    val saboresPermitidos = remember(esPromocion, promocionSeleccionada, sabores) {
+        val permitidos = promocionSeleccionada?.sabores.orEmpty()
+        when {
+            !esPromocion -> sabores
+            permitidos.isEmpty() -> sabores
+            else -> sabores.filter { sabor -> permitidos.any { it.id == sabor.id } }
+        }
+    }
+    val totalLineas = lineas.sumOf { it.cantidad.toIntOrNull() ?: 0 }
+    val puedeGuardar = lineas.isNotEmpty() &&
+        lineas.all { it.saborId != null && (it.cantidad.toIntOrNull() ?: 0) > 0 } &&
+        (!esPromocion || (promo != null && totalLineas == promo.cantidadUnidades))
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(titulo) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Fecha", style = MaterialTheme.typography.bodySmall)
+                            Text(fechaVenta.formatoFechaNegocio(), fontWeight = FontWeight.SemiBold)
+                        }
+                        TextButton(onClick = { mostrarCalendario = true }) { Text("Elegir") }
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !esPromocion,
+                        onClick = {
+                            esPromocion = false
+                            promocionSeleccionada = null
+                        },
+                        label = { Text("Venta por pieza") }
+                    )
+                    FilterChip(
+                        selected = esPromocion,
+                        onClick = { esPromocion = true },
+                        label = { Text("Venta por promoción") }
+                    )
+                }
+                if (esPromocion) {
+                    val activas = promociones.filter { it.promocion.activa }
+                    Text("Promoción", fontWeight = FontWeight.SemiBold)
+                    if (activas.isEmpty()) {
+                        Text("No hay promociones activas.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            activas.forEach { promoConSabores ->
+                                FilterChip(
+                                    selected = promocionSeleccionada?.promocion?.id == promoConSabores.promocion.id,
+                                    onClick = { promocionSeleccionada = promoConSabores },
+                                    label = { Text("${promoConSabores.promocion.nombre} (${promoConSabores.promocion.cantidadUnidades} bolsas)") }
+                                )
+                            }
+                        }
+                    }
+                    promo?.let {
+                        Text(
+                            "Selecciona ${it.cantidadUnidades.formatoUnidades()} bolsas. Actual: ${totalLineas.formatoUnidades()}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                Text("Sabores vendidos", fontWeight = FontWeight.SemiBold)
+                lineas.forEachIndexed { index, linea ->
+                    val sabor = sabores.firstOrNull { it.id == linea.saborId }
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(sabor?.nombre ?: "Elige sabor", fontWeight = FontWeight.SemiBold)
+                                    Text(sabor?.categoria?.nombreCategoria() ?: "Sin seleccionar", style = MaterialTheme.typography.bodySmall)
+                                }
+                                TextButton(onClick = { selectorLineaId = linea.id }) { Text("Cambiar") }
+                            }
+                            OutlinedTextField(
+                                value = linea.cantidad,
+                                onValueChange = { nueva ->
+                                    lineas[index] = linea.copy(cantidad = nueva.soloEntero())
+                                },
+                                label = { Text("Bolsas") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (lineas.size > 1) {
+                                TextButton(onClick = { lineas.removeAt(index) }) { Text("Quitar línea") }
+                            }
+                        }
+                    }
+                }
+                OutlinedButton(
+                    onClick = { lineas.add(VentaLineaUi(siguienteId++, null, "1")) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Agregar sabor") }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = puedeGuardar,
+                onClick = {
+                    val inputs = lineas.mapNotNull { linea ->
+                        val sabor = sabores.firstOrNull { it.id == linea.saborId }
+                        val cantidad = linea.cantidad.toIntOrNull()
+                        if (sabor != null && cantidad != null && cantidad > 0) {
+                            VentaLineaInput(sabor = sabor, cantidad = cantidad)
+                        } else {
+                            null
+                        }
+                    }
+                    onGuardar(fechaVenta, promo, inputs)
+                }
+            ) { Text("Guardar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+
+    if (mostrarCalendario) {
+        FechaPickerDialog(
+            fechaInicial = fechaVenta,
+            onDismiss = { mostrarCalendario = false },
+            onConfirm = {
+                fechaVenta = it
+                mostrarCalendario = false
+            }
+        )
+    }
+
+    selectorLineaId?.let { lineaId ->
+        SaborSelectorDialog(
+            sabores = saboresPermitidos,
+            onDismiss = { selectorLineaId = null },
+            onSeleccionar = { sabor ->
+                val index = lineas.indexOfFirst { it.id == lineaId }
+                if (index >= 0) lineas[index] = lineas[index].copy(saborId = sabor.id)
+                selectorLineaId = null
+            }
+        )
+    }
+
+}
+
+@Composable
+private fun SaborSelectorDialog(
+    sabores: List<SaborEntity>,
+    onDismiss: () -> Unit,
+    onSeleccionar: (SaborEntity) -> Unit
+) {
+    var busqueda by remember { mutableStateOf("") }
+    var categoria by remember { mutableStateOf("TODAS") }
+    val filtrados = remember(sabores, busqueda, categoria) {
+        sabores.filter {
+            (categoria == "TODAS" || it.categoria == categoria) &&
+                it.nombre.contains(busqueda, ignoreCase = true)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Elegir sabor") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = busqueda,
+                    onValueChange = { busqueda = it },
+                    label = { Text("Buscar sabor") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                CategoriaFiltro(categoria) { categoria = it }
+                filtrados.forEach { sabor ->
+                    OutlinedButton(
+                        onClick = { onSeleccionar(sabor) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("${sabor.nombre} - ${sabor.categoria.nombreCategoria()}")
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
 }
 
 @Composable
@@ -963,6 +1380,126 @@ private fun AjusteDialog(
 }
 
 @Composable
+private fun MovimientoEditDialog(
+    movimiento: MovimientoInventarioEntity,
+    sabores: List<SaborEntity>,
+    onDismiss: () -> Unit,
+    onGuardar: (Long, String, Int, LocalDate, String) -> Unit
+) {
+    val opciones = listOf(
+        TipoMovimiento.PEDIDO_RECIBIDO to "Pedido recibido",
+        TipoMovimiento.REGALO_PROVEEDOR to "Regalo de proveedor",
+        TipoMovimiento.MERMA_DANADO to "Merma / dañado",
+        TipoMovimiento.CORTESIA_CLIENTE to "Cortesía / regalo al cliente",
+        TipoMovimiento.CORRECCION_CONTEO to "Corrección de conteo",
+        TipoMovimiento.OTRO_AJUSTE to "Otro ajuste"
+    )
+    var saborId by remember { mutableStateOf(movimiento.saborId) }
+    var tipo by remember { mutableStateOf(movimiento.tipo) }
+    var cantidad by remember { mutableStateOf(kotlin.math.abs(movimiento.cantidad).toString()) }
+    var fecha by remember { mutableStateOf(movimiento.fechaMovimiento.aFechaLocal()) }
+    var motivo by remember { mutableStateOf(movimiento.motivo.orEmpty()) }
+    var restarManual by remember { mutableStateOf(movimiento.cantidad < 0) }
+    var elegirSabor by remember { mutableStateOf(false) }
+    var elegirFecha by remember { mutableStateOf(false) }
+    val permiteElegirSigno = tipo == TipoMovimiento.CORRECCION_CONTEO || tipo == TipoMovimiento.OTRO_AJUSTE
+    val signo = when {
+        tipo == TipoMovimiento.MERMA_DANADO || tipo == TipoMovimiento.CORTESIA_CLIENTE -> -1
+        permiteElegirSigno && restarManual -> -1
+        else -> 1
+    }
+    val sabor = sabores.firstOrNull { it.id == saborId }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Editar movimiento") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(sabor?.nombre ?: "Elige sabor", fontWeight = FontWeight.SemiBold)
+                        TextButton(onClick = { elegirSabor = true }) { Text("Cambiar") }
+                    }
+                }
+                FechaCompacta(
+                    titulo = "Fecha",
+                    fecha = fecha,
+                    onAnterior = { fecha = fecha.minusDays(1) },
+                    onSiguiente = { fecha = fecha.plusDays(1) }
+                )
+                TextButton(onClick = { elegirFecha = true }) { Text("Elegir fecha") }
+                opciones.forEach { opcion ->
+                    FilterChip(
+                        selected = tipo == opcion.first,
+                        onClick = {
+                            tipo = opcion.first
+                            restarManual = false
+                        },
+                        label = { Text(opcion.second) }
+                    )
+                }
+                if (permiteElegirSigno) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = restarManual, onCheckedChange = { restarManual = it })
+                        Text("Restar del inventario")
+                    }
+                }
+                OutlinedTextField(
+                    value = cantidad,
+                    onValueChange = { cantidad = it.soloEntero() },
+                    label = { Text("Bolsas") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = motivo,
+                    onValueChange = { motivo = it },
+                    label = { Text("Nota opcional") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = saborId != 0L && (cantidad.toIntOrNull() ?: 0) > 0,
+                onClick = { onGuardar(saborId, tipo, (cantidad.toIntOrNull() ?: 0) * signo, fecha, motivo) }
+            ) { Text("Guardar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+
+    if (elegirSabor) {
+        SaborSelectorDialog(
+            sabores = sabores,
+            onDismiss = { elegirSabor = false },
+            onSeleccionar = {
+                saborId = it.id
+                elegirSabor = false
+            }
+        )
+    }
+    if (elegirFecha) {
+        FechaPickerDialog(
+            fechaInicial = fecha,
+            onDismiss = { elegirFecha = false },
+            onConfirm = {
+                fecha = it
+                elegirFecha = false
+            }
+        )
+    }
+
+}
+
+@Composable
 private fun PromocionDialog(
     sabores: List<SaborEntity>,
     onDismiss: () -> Unit,
@@ -1060,6 +1597,79 @@ private fun FechaCompacta(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FechaPickerDialog(
+    fechaInicial: LocalDate,
+    onDismiss: () -> Unit,
+    onConfirm: (LocalDate) -> Unit
+) {
+    val state = rememberDatePickerState(initialSelectedDateMillis = fechaInicial.aMillisLocales())
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    state.selectedDateMillis?.let { onConfirm(it.aFechaLocal()) }
+                }
+            ) { Text("Aceptar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    ) {
+        DatePicker(state = state)
+    }
+}
+
+@Composable
+private fun MesAnioDialog(
+    fechaInicial: LocalDate,
+    onDismiss: () -> Unit,
+    onConfirm: (LocalDate) -> Unit
+) {
+    val meses = listOf(
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    )
+    var anio by remember { mutableStateOf(fechaInicial.year.coerceAtLeast(2026)) }
+    var mes by remember { mutableStateOf(fechaInicial.monthValue) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Elegir mes") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(onClick = { if (anio > 2026) anio-- }) { Text("<") }
+                    Text(anio.toString(), fontWeight = FontWeight.Bold)
+                    OutlinedButton(onClick = { anio++ }) { Text(">") }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    meses.forEachIndexed { index, nombre ->
+                        FilterChip(
+                            selected = mes == index + 1,
+                            onClick = { mes = index + 1 },
+                            label = { Text(nombre) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(LocalDate.of(anio, mes, 1)) }) { Text("Aceptar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+private fun LocalDate.aMillisLocales(): Long =
+    atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+private fun Long.aFechaLocal(): LocalDate =
+    Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault()).toLocalDate()
 
 @Composable
 private fun PromocionCard(promocion: PromocionConSabores, onDesactivar: () -> Unit) {
@@ -1173,6 +1783,17 @@ private fun String.nombreTamano(): String =
         TamanoInterfaz.PEQUENO -> "Pequeño"
         TamanoInterfaz.GRANDE -> "Grande"
         else -> "Mediano"
+    }
+
+private fun String.nombreMovimiento(): String =
+    when (this) {
+        TipoMovimiento.VENTA -> "Venta"
+        TipoMovimiento.PEDIDO_RECIBIDO -> "Pedido recibido"
+        TipoMovimiento.REGALO_PROVEEDOR -> "Regalo de proveedor"
+        TipoMovimiento.MERMA_DANADO -> "Merma / dañado"
+        TipoMovimiento.CORTESIA_CLIENTE -> "Cortesía / regalo al cliente"
+        TipoMovimiento.CORRECCION_CONTEO -> "Corrección de conteo"
+        else -> "Otro ajuste"
     }
 
 private fun TipoReporte.titulo(): String =

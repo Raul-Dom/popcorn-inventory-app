@@ -34,6 +34,15 @@ interface PopcornDao {
     @Update
     suspend fun updateSabor(sabor: SaborEntity)
 
+    @Query("SELECT COUNT(*) FROM detalle_ventas WHERE saborId = :saborId")
+    suspend fun contarDetallesPorSabor(saborId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM movimientos_inventario WHERE saborId = :saborId")
+    suspend fun contarMovimientosPorSabor(saborId: Long): Int
+
+    @Query("DELETE FROM sabores WHERE id = :saborId")
+    suspend fun borrarSabor(saborId: Long)
+
     @Query("UPDATE sabores SET inventarioActual = inventarioActual + :cantidad WHERE id = :saborId")
     suspend fun sumarInventario(saborId: Long, cantidad: Int)
 
@@ -68,11 +77,33 @@ interface PopcornDao {
     @Insert
     suspend fun insertVenta(venta: VentaEntity): Long
 
+    @Update
+    suspend fun updateVenta(venta: VentaEntity)
+
     @Insert
     suspend fun insertDetallesVenta(detalles: List<DetalleVentaEntity>)
 
+    @Query("DELETE FROM detalle_ventas WHERE ventaId = :ventaId")
+    suspend fun borrarDetallesVenta(ventaId: Long)
+
+    @Query("SELECT * FROM detalle_ventas WHERE ventaId = :ventaId")
+    suspend fun getDetallesVenta(ventaId: Long): List<DetalleVentaEntity>
+
+    @Transaction
+    @Query("SELECT * FROM ventas WHERE id = :ventaId")
+    suspend fun getVentaConDetalles(ventaId: Long): VentaConDetalles?
+
     @Insert
     suspend fun insertMovimiento(movimiento: MovimientoInventarioEntity): Long
+
+    @Query("DELETE FROM movimientos_inventario WHERE tipo = :tipo AND referenciaId = :referenciaId")
+    suspend fun borrarMovimientosPorReferencia(tipo: String, referenciaId: Long)
+
+    @Query("SELECT * FROM movimientos_inventario WHERE id = :movimientoId")
+    suspend fun getMovimiento(movimientoId: Long): MovimientoInventarioEntity?
+
+    @Update
+    suspend fun updateMovimiento(movimiento: MovimientoInventarioEntity)
 
     @Query("SELECT * FROM ventas WHERE anulada = 0 AND fechaVenta BETWEEN :inicio AND :fin ORDER BY fechaVenta DESC, fechaRegistro DESC")
     fun observeVentasEntre(inicio: Long, fin: Long): Flow<List<VentaEntity>>

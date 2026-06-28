@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.popcorn.inventory.data.CategoriaSabor
 import com.popcorn.inventory.data.ConfiguracionEntity
+import com.popcorn.inventory.data.MovimientoInventarioEntity
 import com.popcorn.inventory.data.PopcornRepository
 import com.popcorn.inventory.data.PromocionConSabores
 import com.popcorn.inventory.data.PromocionEntity
@@ -15,9 +16,10 @@ import com.popcorn.inventory.data.SaborEntity
 import com.popcorn.inventory.data.SaborResumen
 import com.popcorn.inventory.data.TipoMovimiento
 import com.popcorn.inventory.data.VentaConDetalles
+import com.popcorn.inventory.data.VentaEntity
+import com.popcorn.inventory.data.VentaLineaInput
 import com.popcorn.inventory.data.alFinalDelDiaMillis
 import com.popcorn.inventory.data.alInicioDelDiaMillis
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +54,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val promociones: StateFlow<List<PromocionConSabores>> =
         repository.promociones.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val movimientosRecientes: StateFlow<List<MovimientoInventarioEntity>> =
+        repository.movimientosRecientes.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val ventasDia: StateFlow<List<VentaConDetalles>> =
         fechaSeleccionada.flatMapLatest { fecha ->
             repository.ventasEntre(fecha.alInicioDelDiaMillis(), fecha.alFinalDelDiaMillis())
@@ -79,6 +84,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         fechaSeleccionada.value = fechaSeleccionada.value.plusDays(dias)
     }
 
+    fun seleccionarFecha(fecha: LocalDate) {
+        fechaSeleccionada.value = fecha
+    }
+
     fun hoy() {
         fechaSeleccionada.value = LocalDate.now()
     }
@@ -101,9 +110,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun borrarODesactivarSabor(saborId: Long) {
+        viewModelScope.launch {
+            repository.borrarODesactivarSabor(saborId)
+        }
+    }
+
     fun registrarVentaNormal(sabor: SaborEntity, cantidad: Int) {
         viewModelScope.launch {
             repository.registrarVentaNormal(sabor, cantidad, fechaSeleccionada.value.alInicioDelDiaMillis())
+        }
+    }
+
+    fun registrarVentaLineas(lineas: List<VentaLineaInput>, fecha: LocalDate = fechaSeleccionada.value) {
+        viewModelScope.launch {
+            repository.registrarVentaLineas(lineas, fecha.alInicioDelDiaMillis())
         }
     }
 
@@ -113,12 +134,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun registrarVentaPromocionLineas(
+        promocion: PromocionEntity,
+        lineas: List<VentaLineaInput>,
+        fecha: LocalDate = fechaSeleccionada.value
+    ) {
+        viewModelScope.launch {
+            repository.registrarVentaLineas(lineas, fecha.alInicioDelDiaMillis(), promocion)
+        }
+    }
+
+    fun actualizarVenta(
+        venta: VentaEntity,
+        lineas: List<VentaLineaInput>,
+        fecha: LocalDate,
+        promocion: PromocionEntity?
+    ) {
+        viewModelScope.launch {
+            repository.actualizarVenta(venta, lineas, fecha.alInicioDelDiaMillis(), promocion)
+        }
+    }
+
     fun registrarPedidoRecibido(saborId: Long, cantidad: Int) {
         registrarMovimiento(saborId, TipoMovimiento.PEDIDO_RECIBIDO, cantidad, "Pedido recibido")
     }
 
     fun registrarAjuste(saborId: Long, tipo: String, cantidad: Int, motivo: String) {
         registrarMovimiento(saborId, tipo, cantidad, motivo)
+    }
+
+    fun actualizarMovimiento(
+        movimientoId: Long,
+        saborId: Long,
+        tipo: String,
+        cantidad: Int,
+        fecha: LocalDate,
+        motivo: String
+    ) {
+        viewModelScope.launch {
+            repository.actualizarMovimientoInventario(
+                movimientoId = movimientoId,
+                nuevoSaborId = saborId,
+                nuevoTipo = tipo,
+                nuevaCantidad = cantidad,
+                nuevaFechaMovimiento = fecha.alInicioDelDiaMillis(),
+                nuevoMotivo = motivo
+            )
+        }
     }
 
     fun guardarConfiguracion(configuracion: ConfiguracionEntity) {

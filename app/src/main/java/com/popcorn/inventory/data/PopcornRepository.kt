@@ -81,6 +81,17 @@ class PopcornRepository(
         dao.desactivarSabor(saborId)
     }
 
+    suspend fun borrarODesactivarSabor(saborId: Long): Boolean {
+        val tieneUso = dao.contarDetallesPorSabor(saborId) > 0 || dao.contarMovimientosPorSabor(saborId) > 0
+        return if (tieneUso) {
+            dao.desactivarSabor(saborId)
+            false
+        } else {
+            dao.borrarSabor(saborId)
+            true
+        }
+    }
+
     suspend fun aplicarPrecioASeleccion(saborIds: List<Long>, precio: Double) {
         if (saborIds.isNotEmpty()) dao.actualizarPreciosSeleccion(saborIds, precio)
     }
@@ -119,28 +130,46 @@ class PopcornRepository(
 
     suspend fun registrarVentaNormal(sabor: SaborEntity, cantidad: Int, fechaVenta: Long) {
         require(cantidad > 0) { "La cantidad debe ser mayor a cero." }
+        registrarVentaLineas(
+            lineas = listOf(VentaLineaInput(sabor, cantidad)),
+            fechaVenta = fechaVenta,
+            promocion = null
+        )
+    }
+
+    suspend fun registrarVentaLineas(
+        lineas: List<VentaLineaInput>,
+        fechaVenta: Long,
+        promocion: PromocionEntity? = null
+    ) {
+        require(lineas.isNotEmpty()) { "La venta debe tener al menos un sabor." }
+        require(lineas.all { it.cantidad > 0 }) { "Todas las cantidades deben ser mayores a cero." }
         database.withTransaction {
-            val total = sabor.precioVenta * cantidad
+            val totalUnidades = lineas.sumOf { it.cantidad }
+            val total = promocion?.precioPromocional ?: lineas.sumOf { it.precioUnitario * it.cantidad }
+            val precioPromocionalUnitario = if (promocion != null) total / totalUnidades else null
             val ventaId = dao.insertVenta(
                 VentaEntity(
                     fechaVenta = fechaVenta,
-                    totalUnidades = cantidad,
+                    totalUnidades = totalUnidades,
                     totalDinero = total,
-                    promocionId = null
+                    promocionId = promocion?.id
                 )
             )
             dao.insertDetallesVenta(
-                listOf(
+                lineas.map { linea ->
                     DetalleVentaEntity(
                         ventaId = ventaId,
-                        saborId = sabor.id,
-                        cantidad = cantidad,
-                        precioAplicado = sabor.precioVenta,
-                        subtotal = total
+                        saborId = linea.sabor.id,
+                        cantidad = linea.cantidad,
+                        precioAplicado = precioPromocionalUnitario ?: linea.precioUnitario,
+                        subtotal = (precioPromocionalUnitario ?: linea.precioUnitario) * linea.cantidad
                     )
-                )
+                }
             )
-            registrarSalidaPorVenta(sabor.id, cantidad, fechaVenta, ventaId)
+            lineas.forEach { linea ->
+                registrarSalidaPorVenta(linea.sabor.id, linea.cantidad, fechaVenta, ventaId)
+            }
         }
     }
 
@@ -150,27 +179,60 @@ class PopcornRepository(
         fechaVenta: Long
     ) {
         require(promocion.cantidadUnidades > 0) { "La promoción debe tener unidades." }
+        registrarVentaLineas(
+            lineas = listOf(
+                VentaLineaInput(
+                    sabor = sabor,
+                    cantidad = promocion.cantidadUnidades,
+                    precioUnitario = promocion.precioPromocional / promocion.cantidadUnidades
+                )
+            ),
+            fechaVenta = fechaVenta,
+            promocion = promocion
+        )
+    }
+
+    suspend fun actualizarVenta(
+        ventaOriginal: VentaEntity,
+        nuevasLineas: List<VentaLineaInput>,
+        nuevaFechaVenta: Long,
+        promocion: PromocionEntity?
+    ) {
+        require(nuevasLineas.isNotEmpty()) { "La venta debe tener al menos un sabor." }
+        require(nuevasLineas.all { it.cantidad > 0 }) { "Todas las cantidades deben ser mayores a cero." }
         database.withTransaction {
-            val ventaId = dao.insertVenta(
-                VentaEntity(
-                    fechaVenta = fechaVenta,
-                    totalUnidades = promocion.cantidadUnidades,
-                    totalDinero = promocion.precioPromocional,
-                    promocionId = promocion.id
+            val detallesActuales = dao.getDetallesVenta(ventaOriginal.id)
+            detallesActuales.forEach { detalle ->
+                dao.sumarInventario(detalle.saborId, detalle.cantidad)
+            }
+            dao.borrarDetallesVenta(ventaOriginal.id)
+            dao.borrarMovimientosPorReferencia(TipoMovimiento.VENTA, ventaOriginal.id)
+
+            val totalUnidades = nuevasLineas.sumOf { it.cantidad }
+            val total = promocion?.precioPromocional ?: nuevasLineas.sumOf { it.precioUnitario * it.cantidad }
+            val precioPromocionalUnitario = if (promocion != null) total / totalUnidades else null
+            dao.updateVenta(
+                ventaOriginal.copy(
+                    fechaVenta = nuevaFechaVenta,
+                    totalUnidades = totalUnidades,
+                    totalDinero = total,
+                    promocionId = promocion?.id
                 )
             )
             dao.insertDetallesVenta(
-                listOf(
+                nuevasLineas.map { linea ->
                     DetalleVentaEntity(
-                        ventaId = ventaId,
-                        saborId = sabor.id,
-                        cantidad = promocion.cantidadUnidades,
-                        precioAplicado = promocion.precioPromocional / promocion.cantidadUnidades,
-                        subtotal = promocion.precioPromocional
+                        ventaId = ventaOriginal.id,
+                        saborId = linea.sabor.id,
+                        cantidad = linea.cantidad,
+                        precioAplicado = precioPromocionalUnitario ?: linea.precioUnitario,
+                        subtotal = (precioPromocionalUnitario ?: linea.precioUnitario) * linea.cantidad
                     )
-                )
+                }
             )
-            registrarSalidaPorVenta(sabor.id, promocion.cantidadUnidades, fechaVenta, ventaId)
+            nuevasLineas.forEach { linea ->
+                registrarSalidaPorVenta(linea.sabor.id, linea.cantidad, nuevaFechaVenta, ventaOriginal.id)
+            }
         }
     }
 
@@ -192,6 +254,31 @@ class PopcornRepository(
                     fechaMovimiento = fechaMovimiento,
                     referenciaId = null,
                     motivo = motivo
+                )
+            )
+        }
+    }
+
+    suspend fun actualizarMovimientoInventario(
+        movimientoId: Long,
+        nuevoSaborId: Long,
+        nuevoTipo: String,
+        nuevaCantidad: Int,
+        nuevaFechaMovimiento: Long,
+        nuevoMotivo: String?
+    ) {
+        require(nuevaCantidad != 0) { "La cantidad no puede ser cero." }
+        database.withTransaction {
+            val actual = dao.getMovimiento(movimientoId) ?: return@withTransaction
+            dao.sumarInventario(actual.saborId, -actual.cantidad)
+            dao.sumarInventario(nuevoSaborId, nuevaCantidad)
+            dao.updateMovimiento(
+                actual.copy(
+                    saborId = nuevoSaborId,
+                    tipo = nuevoTipo,
+                    cantidad = nuevaCantidad,
+                    fechaMovimiento = nuevaFechaMovimiento,
+                    motivo = nuevoMotivo
                 )
             )
         }
