@@ -1,122 +1,194 @@
-# Reporte de estabilización
+# Reporte del Proyecto - La Pop-Pería
 
-Fecha: 10/Junio/26
+Actualizado: 28/Junio/26
 
-## Estado de compilación
+Este documento funciona como bitacora humana del proyecto. La idea es poder entender como va evolucionando la app sin revisar commit por commit.
 
-Se corrigió localmente el error reportado por GitHub Actions:
+## Estado Actual
+
+La app ya compila desde GitHub Actions y genera un APK debug instalable como artefacto.
+
+El proyecto es una app Android local/offline para controlar inventario, ventas, pedidos recibidos, promociones, ajustes y reportes de La Pop-Pería. No usa backend, login, nube ni pagos.
+
+Stack actual:
+
+- Kotlin
+- Jetpack Compose
+- Room
+- Gradle
+- GitHub Actions
+
+## Version Actual de Trabajo
+
+La version actual se enfoca en estabilizar la app y mejorar el flujo basico antes de usar datos reales.
+
+Cambios principales incluidos:
+
+- La app compila en GitHub Actions.
+- El APK debug se genera automaticamente desde el workflow `Generar APK Android`.
+- El nombre visible dentro de la app ya es `La Pop-Pería`.
+- El nombre Android de instalacion/launcher tambien se cambio a `La Pop-Pería`.
+- Se corrigio el crash detectado al hacer scroll al final de Ventas.
+- Se mejoro el flujo de captura de ventas.
+- Se agrego seleccion de fechas con calendario.
+- Se agrego capacidad de registrar ventas de varias lineas.
+- Se agrego soporte para ventas por promocion.
+- Se agrego edicion/correccion directa de ventas y movimientos.
+- Se quitaron controles de configuracion que no hacian nada, como `Pequeno`, `Mediano` y `Grande`.
+- Se configuro una firma debug estable para que futuras versiones puedan actualizarse sobre la anterior despues de la reinstalacion inicial necesaria.
+
+## Evolucion del Proyecto
+
+### Etapa 1 - Base Android
+
+Se preparo la estructura Android del proyecto:
+
+- Modulo principal en `app`.
+- Configuracion Gradle.
+- Kotlin y Jetpack Compose.
+- Base local con Room.
+- Entidades para sabores, inventario, promociones, ventas, detalles y movimientos.
+- Workflow de GitHub Actions para generar APK debug.
+
+Resultado: el repositorio quedo preparado para construir la app desde GitHub.
+
+### Etapa 2 - Compilacion y APK
+
+Se corrigieron errores iniciales de compilacion, incluyendo un problema de tipos donde Kotlin esperaba `Long` y recibia `Int`.
+
+Tambien se dejo documentado que, si el entorno local no tiene Android SDK/Gradle/Java, GitHub Actions es la ruta principal para construir el APK.
+
+Resultado: GitHub Actions pudo compilar y publicar el APK debug.
+
+### Etapa 3 - Estabilizacion de Ventas
+
+Se investigo el cierre inesperado al llegar al final del scroll en Ventas.
+
+La causa mas probable estaba en identificadores inestables o duplicados dentro de listas Compose. Se ajustaron las llaves de elementos para evitar conflictos al renderizar el final de la lista.
+
+Resultado: la app dejo de fallar en GitHub Actions y quedo preparada para nueva prueba en celular.
+
+### Etapa 4 - Flujo de Ventas, Fechas y Correcciones
+
+Se mejoro el uso real de la seccion de ventas:
+
+- Fecha por defecto en hoy.
+- Calendario para registrar ventas de dias anteriores.
+- Venta por pieza.
+- Venta con varias lineas de sabores y cantidades.
+- Venta por promocion.
+- Edicion/correccion directa de ventas.
+- Ajuste de inventario cuando se corrige una venta.
+- Calendarios en reportes para no depender solo de flechas.
+
+Resultado: la captura se acerca mas a escenarios reales, como varias ventas al final del dia, varios sabores en una misma venta o ventas hechas en fechas anteriores.
+
+### Etapa 5 - Nombre y Limpieza de Configuracion
+
+Se cambio el nombre visible de la app a `La Pop-Pería`.
+
+Tambien se quito de Configuracion la seccion de tamano de interfaz (`Pequeno`, `Mediano`, `Grande`) porque no tenia efecto real sobre la app. Mantenerla visible confundia mas de lo que ayudaba.
+
+Resultado: la pantalla de Configuracion queda mas honesta y clara.
+
+## Decisiones Importantes
+
+### App local/offline
+
+La app se mantiene local en el celular. No hay cuentas, servidores, nube ni sincronizacion.
+
+### Unidades
+
+Todo el inventario se maneja en unidades enteras, es decir bolsas:
+
+- 1 bolsa
+- 2 bolsas
+- 10 bolsas
+
+No se manejan decimales en cantidades.
+
+### Dinero
+
+El dinero se muestra con simbolo `$`, comas para miles y 2 decimales.
+
+Ejemplo:
 
 ```text
-Argument type mismatch: actual type is 'kotlin.Int', but 'kotlin.Long' was expected.
+$1,234.56
 ```
 
-Archivo corregido:
+### Fechas
+
+El formato visual elegido es:
 
 ```text
-app/src/main/java/com/popcorn/inventory/MainActivity.kt
+09/Junio/26
 ```
 
-Cambio aplicado:
+### Inventario bajo
 
-```kotlin
-onAnterior = { vm.cambiarFecha(if (tipo == TipoReporte.SEMANA) -7L else -1L) },
-onSiguiente = { vm.cambiarFecha(if (tipo == TipoReporte.SEMANA) 7L else 1L) },
-```
+El umbral general de alerta es 10 bolsas o menos.
 
-Esto evita que Kotlin infiera `Int` en la expresión condicional y entrega el `Long` que espera `vm.cambiarFecha`.
+### Edicion de datos
 
-## Entorno local
+Por practicidad, se priorizo permitir corregir directamente registros equivocados. Esto hace mas facil arreglar errores de captura en cualquier fecha.
 
-No fue posible compilar localmente en esta máquina porque no están disponibles:
+Riesgo conocido: editar datos historicos cambia reportes anteriores, pero para esta etapa se considero mejor permitir correcciones simples que bloquear al usuario.
 
-- `java`
-- `gradle`
-- Android SDK
-- Android Studio en la ruta esperada
-- `git` en el PATH
+### Sabores usados en registros
 
-El problema de compilación local es del entorno, no necesariamente del código.
+Si un sabor ya tiene historial, lo mas seguro es inactivarlo en vez de borrarlo fisicamente para no romper reportes.
 
-## GitHub remoto
+## Instalacion y Actualizaciones
 
-Se revisó el archivo remoto en:
+El APK se descarga desde GitHub Actions:
 
-```text
-https://github.com/Raul-Dom/popcorn-inventory-app/tree/main
-```
+1. Entrar al repositorio en GitHub.
+2. Ir a `Actions`.
+3. Abrir el ultimo workflow exitoso `Generar APK Android`.
+4. Descargar el artefacto `inventario-palomitas-debug-apk`.
+5. Extraer el ZIP.
+6. Instalar el APK en el celular.
 
-El error `Int` contra `Long` todavía existe en el remoto mientras estos cambios locales no se suban a GitHub.
+Nota importante:
 
-Se intentó actualizar el archivo remoto con el conector de GitHub, pero GitHub respondió:
+Hubo una version anterior firmada con una firma debug distinta. Si Android muestra conflicto de paquete al actualizar, hay que desinstalar una vez la app anterior e instalar el nuevo APK. Despues de esa instalacion, las siguientes actualizaciones deberian poder instalarse encima porque ya se configuro una firma debug estable.
 
-```text
-403 Resource not accessible by integration
-```
+## Riesgos Conocidos
 
-Por eso, el siguiente paso necesario es subir los cambios locales al repositorio.
+Antes de usar datos reales de forma definitiva, conviene probar:
 
-## Workflow de GitHub Actions
+- Registrar una venta de un solo sabor.
+- Registrar una venta con varios sabores.
+- Registrar una venta con promocion.
+- Editar una venta del mismo dia.
+- Editar una venta de dias anteriores.
+- Registrar pedido recibido.
+- Registrar merma/cortesia/correccion.
+- Revisar que el inventario suba o baje correctamente.
+- Revisar reportes por dia, semana, mes y rango.
+- Confirmar que el scroll de Ventas ya no cierre la app.
 
-El workflow local existe en:
+## Hacia Donde Va
 
-```text
-.github/workflows/android-apk.yml
-```
+La direccion del proyecto es mantener la app simple, estable y util para operacion diaria.
 
-Hace lo siguiente:
+Prioridades siguientes:
 
-- Descarga el repositorio.
-- Configura Java 17.
-- Configura Android SDK.
-- Instala `platforms;android-35` y `build-tools;35.0.0`.
-- Configura Gradle 8.10.2.
-- Ejecuta `gradle :app:assembleDebug`.
-- Publica `app/build/outputs/apk/debug/app-debug.apk` como artefacto.
+1. Probar la version actual en celular con datos falsos.
+2. Corregir cualquier crash o comportamiento raro antes de meter datos reales.
+3. Afinar promociones segun promociones reales del negocio.
+4. Mejorar reportes solo cuando ya exista uso real.
+5. Evitar redisenos grandes mientras la app siga estabilizandose.
 
-## Auditoría técnica rápida
+## Criterio de Listo
 
-### Gradle
+Una version se considera lista para probar cuando:
 
-- La estructura del proyecto es correcta.
-- El módulo Android está en `app`.
-- `compileSdk`, `targetSdk` y el workflow usan Android 35.
-- Kotlin, Compose, KSP y Room están declarados.
-
-### Kotlin / Compose
-
-- Se corrigió el error actual de tipos `Int`/`Long`.
-- `FlowRow` está cubierto con opt-in experimental.
-- `TopAppBar` está cubierto con opt-in de Material 3.
-- No se detectaron imports faltantes obvios en revisión estática.
-
-### Room
-
-- Las entidades principales existen: sabores, configuración, promociones, ventas, detalles y movimientos.
-- La base local está definida con Room.
-- Los movimientos de inventario permiten ventas, pedido recibido, regalo de proveedor, merma, cortesía y corrección.
-
-## Auditoría funcional rápida
-
-Puntos correctos:
-
-- La venta normal descuenta inventario.
-- La venta con promoción descuenta inventario y registra el precio promocional.
-- El pedido recibido suma inventario.
-- El regalo de proveedor suma inventario.
-- La merma y cortesía restan inventario.
-- La corrección de conteo puede sumar o restar.
-- El pedido sugerido se calcula como `inventario ideal - inventario actual`, con mínimo 0.
-- La alerta de inventario bajo usa 10 bolsas o menos.
-
-Riesgos a revisar después de que compile:
-
-- Editar directamente el inventario actual de un sabor no genera movimiento histórico.
-- No hay anulación de ventas todavía.
-- La venta con promoción actualmente aplica la promoción a un solo sabor por registro.
-- Los reportes se enfocan en ventas; los movimientos de inventario existen, pero no aparecen completos en reportes.
-
-Estos riesgos no bloquean la generación del APK debug, pero conviene revisarlos antes de usar datos reales.
-
-## Próximo paso
-
-Subir estos cambios locales a GitHub y volver a ejecutar el workflow `Generar APK Android`.
+- GitHub Actions aparece en verde.
+- Existe artefacto APK descargable.
+- El APK instala correctamente.
+- La app abre sin crash.
+- Se puede registrar venta, pedido recibido y ajuste.
+- El inventario cambia de forma esperada.
+- Los reportes muestran informacion coherente.

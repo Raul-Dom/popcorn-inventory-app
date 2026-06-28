@@ -63,7 +63,6 @@ import com.popcorn.inventory.data.PromocionConSabores
 import com.popcorn.inventory.data.PromocionEntity
 import com.popcorn.inventory.data.SaborEntity
 import com.popcorn.inventory.data.SaborResumen
-import com.popcorn.inventory.data.TamanoInterfaz
 import com.popcorn.inventory.data.TipoMovimiento
 import com.popcorn.inventory.data.VentaConDetalles
 import com.popcorn.inventory.data.VentaLineaInput
@@ -519,15 +518,6 @@ private fun ConfiguracionScreen(vm: MainViewModel, modifier: Modifier = Modifier
                     Text("Alerta de inventario bajo: ${config.umbralInventarioBajo} bolsas o menos")
                     Text("Fecha: 09/Junio/26")
                     Text("Dinero: ${1234.56.formatoDinero()}")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(TamanoInterfaz.PEQUENO, TamanoInterfaz.MEDIANO, TamanoInterfaz.GRANDE).forEach { tamano ->
-                            FilterChip(
-                                selected = config.tamanoInterfaz == tamano,
-                                onClick = { vm.guardarConfiguracion(config.copy(tamanoInterfaz = tamano)) },
-                                label = { Text(tamano.nombreTamano()) }
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -1777,13 +1767,6 @@ private fun promocionesActivasPara(
 
 private fun String.nombreCategoria(): String =
     if (this == CategoriaSabor.DULCE) "Dulces" else "Saladas"
-
-private fun String.nombreTamano(): String =
-    when (this) {
-        TamanoInterfaz.PEQUENO -> "Pequeño"
-        TamanoInterfaz.GRANDE -> "Grande"
-        else -> "Mediano"
-    }
 
 private fun String.nombreMovimiento(): String =
     when (this) {
