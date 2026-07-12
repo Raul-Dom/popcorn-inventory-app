@@ -1,6 +1,6 @@
 # Reporte del Proyecto - La Pop-Pería
 
-Actualizado: 28/Junio/26
+Actualizado: 12/Julio/26
 
 Este documento funciona como bitacora humana del proyecto. La idea es poder entender como va evolucionando la app sin revisar commit por commit.
 
@@ -38,6 +38,10 @@ Cambios principales incluidos:
 - Se corrigio el desfase de un dia al elegir fechas desde calendarios.
 - Se agregaron graficas simples en Reportes para ver bolsas vendidas y dinero vendido por sabor.
 - Se configuro una firma debug estable para que futuras versiones puedan actualizarse sobre la anterior despues de la reinstalacion inicial necesaria.
+- Las promociones ahora guardan una cantidad exacta por sabor mediante una migracion Room compatible.
+- El flujo `Nueva venta` separa venta por pieza y venta por promocion; la promocion usa su composicion guardada sin pedir sabores ni cantidades manuales.
+- Se agrego eliminacion confirmada de ventas con reversa de inventario y exclusion de reportes.
+- Se agrego reactivacion de sabores y promociones inactivos.
 
 ## Evolucion del Proyecto
 
@@ -105,6 +109,30 @@ Tambien se agregaron graficas simples en Reportes:
 Las graficas usan el mismo periodo elegido en Reportes: dia, semana, mes o rango.
 
 Resultado: los reportes ahora permiten revisar mas rapido que se vendio y cuanto se vendio, sin depender solo de una lista.
+
+### Etapa 7 - Promociones, Totales y Correcciones
+
+La estructura anterior de promociones solo conocia los sabores permitidos y la cantidad total. Eso obligaba a elegir manualmente los sabores al vender una promocion y podia producir registros incompletos.
+
+Se agrego la cantidad por sabor en `promocion_sabores` y se incremento Room de version 1 a 2 con una migracion. Las promociones nuevas se crean definiendo, por ejemplo, `Caramelo x1` y `Queso x1`; al venderlas, la app descuenta esas lineas, registra el precio promocional completo y las reporta como una sola venta.
+
+Las ventas por pieza siguen aceptando una o varias lineas. Las ventas pueden editarse en cualquier fecha y ahora tambien eliminarse con confirmacion: se devuelve cada bolsa al sabor correspondiente, se anula el movimiento de venta y la venta deja de contar en reportes.
+
+Los sabores y promociones inactivos pueden reactivarse. Crear un sabor con el mismo nombre y categoria de uno existente reutiliza y reactiva el registro en vez de duplicarlo. Crear una promocion con el mismo nombre de una inactiva la reactiva.
+
+## Pruebas de esta etapa
+
+En el celular, con datos falsos, revisar:
+
+1. Crear una promocion de dos sabores con una bolsa por sabor.
+2. Registrar el mismo dia una promocion de `$60.00` y una venta de Caramelo de `$35.00`; el resumen y Reportes deben mostrar `$95.00`.
+3. Confirmar que la venta promocional descuenta exactamente la composicion configurada.
+4. Editar una venta de 1 a 2 bolsas y confirmar diferencia de inventario y total.
+5. Eliminar una venta y confirmar que devuelve las bolsas y desaparece del reporte.
+6. Desactivar y reactivar un sabor y una promocion.
+7. Revisar Reportes por dia, semana, mes y rango; las bolsas por sabor deben coincidir con las graficas.
+
+Riesgo conocido: las promociones antiguas con varios sabores y cantidad total ambigua no pueden reconstruirse automaticamente con certeza. La app conserva sus datos; si la suma guardada no coincide con el total, bloquea la venta y pide crear una promocion nueva con cantidades exactas.
 
 ## Decisiones Importantes
 

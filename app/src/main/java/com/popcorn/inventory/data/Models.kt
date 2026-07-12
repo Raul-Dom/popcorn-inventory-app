@@ -17,6 +17,11 @@ data class PromocionConSabores(
     @Embedded val promocion: PromocionEntity,
     @Relation(
         parentColumn = "id",
+        entityColumn = "promocionId"
+    )
+    val ingredientes: List<PromocionSaborEntity>,
+    @Relation(
+        parentColumn = "id",
         entityColumn = "id",
         associateBy = Junction(
             value = PromocionSaborEntity::class,
@@ -57,4 +62,9 @@ data class VentaLineaInput(
     val sabor: SaborEntity,
     val cantidad: Int,
     val precioUnitario: Double = sabor.precioVenta
+)
+
+data class PromocionSaborInput(
+    val saborId: Long,
+    val cantidad: Int
 )

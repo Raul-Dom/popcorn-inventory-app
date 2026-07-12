@@ -49,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -62,6 +63,7 @@ import com.popcorn.inventory.data.CategoriaSabor
 import com.popcorn.inventory.data.MovimientoInventarioEntity
 import com.popcorn.inventory.data.PromocionConSabores
 import com.popcorn.inventory.data.PromocionEntity
+import com.popcorn.inventory.data.PromocionSaborInput
 import com.popcorn.inventory.data.SaborEntity
 import com.popcorn.inventory.data.SaborResumen
 import com.popcorn.inventory.data.SaborVendido
@@ -153,10 +155,9 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val promociones by vm.promociones.collectAsState()
     var busqueda by remember { mutableStateOf("") }
     var categoria by remember { mutableStateOf("TODAS") }
-    var ventaNormalSabor by remember { mutableStateOf<SaborEntity?>(null) }
-    var ventaPromoSabor by remember { mutableStateOf<SaborEntity?>(null) }
     var mostrarAgregarVenta by remember { mutableStateOf(false) }
     var ventaEditando by remember { mutableStateOf<VentaConDetalles?>(null) }
+    var ventaEliminando by remember { mutableStateOf<VentaConDetalles?>(null) }
 
     val resumenPorId = remember(resumen) { resumen.associateBy { it.id } }
     val saboresFiltrados = remember(sabores, categoria, busqueda) {
@@ -216,9 +217,7 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             SaborVentaCard(
                 sabor = sabor,
                 resumen = item,
-                promociones = promocionesActivasPara(promociones, sabor, fecha),
-                onVenta = { ventaNormalSabor = sabor },
-                onPromo = { ventaPromoSabor = sabor }
+                onVenta = { mostrarAgregarVenta = true }
             )
         }
         item {
@@ -245,7 +244,10 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                             },
                             style = MaterialTheme.typography.bodySmall
                         )
-                        OutlinedButton(onClick = { ventaEditando = venta }) { Text("Editar") }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { ventaEditando = venta }) { Text("Editar") }
+                            TextButton(onClick = { ventaEliminando = venta }) { Text("Eliminar") }
+                        }
                     }
                 }
             }
@@ -253,31 +255,9 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         item { Spacer(Modifier.height(12.dp)) }
     }
 
-    ventaNormalSabor?.let { sabor ->
-        VentaNormalDialog(
-            sabor = sabor,
-            onDismiss = { ventaNormalSabor = null },
-            onConfirm = { cantidad ->
-                vm.registrarVentaNormal(sabor, cantidad)
-                ventaNormalSabor = null
-            }
-        )
-    }
-
-    ventaPromoSabor?.let { sabor ->
-        VentaPromocionDialog(
-            sabor = sabor,
-            promociones = promocionesActivasPara(promociones, sabor, fecha).map { it.promocion },
-            onDismiss = { ventaPromoSabor = null },
-            onConfirm = { promocion ->
-                vm.registrarVentaPromocion(promocion, sabor)
-                ventaPromoSabor = null
-            }
-        )
-    }
     if (mostrarAgregarVenta) {
         VentaLineasDialog(
-            titulo = "Agregar venta",
+            titulo = "Nueva venta",
             fechaInicial = fecha,
             sabores = sabores,
             promociones = promociones,
@@ -287,7 +267,7 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 if (promocion == null) {
                     vm.registrarVentaLineas(lineas, fechaVenta)
                 } else {
-                    vm.registrarVentaPromocionLineas(promocion, lineas, fechaVenta)
+                    vm.registrarVentaPromocion(promocion, fechaVenta)
                 }
                 mostrarAgregarVenta = false
             }
@@ -303,9 +283,33 @@ private fun VentasScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             ventaInicial = venta,
             onDismiss = { ventaEditando = null },
             onGuardar = { fechaVenta, promocion, lineas ->
-                vm.actualizarVenta(venta.venta, lineas, fechaVenta, promocion)
+                if (promocion == null) {
+                    vm.actualizarVenta(venta.venta, lineas, fechaVenta, null)
+                } else {
+                    vm.actualizarVenta(
+                        venta.venta,
+                        emptyList(),
+                        fechaVenta,
+                        promocion
+                    )
+                }
                 ventaEditando = null
             }
+        )
+    }
+
+    ventaEliminando?.let { venta ->
+        AlertDialog(
+            onDismissRequest = { ventaEliminando = null },
+            title = { Text("Eliminar venta") },
+            text = { Text("Se devolverán las bolsas al inventario y la venta dejará de aparecer en reportes. ¿Continuar?") },
+            confirmButton = {
+                Button(onClick = {
+                    vm.eliminarVenta(venta.venta.id)
+                    ventaEliminando = null
+                }) { Text("Eliminar") }
+            },
+            dismissButton = { TextButton(onClick = { ventaEliminando = null }) { Text("Cancelar") } }
         )
     }
 }
@@ -377,7 +381,10 @@ private fun InventarioScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     sabor = sabor,
                     onEditar = { saboresPorId[sabor.id]?.let { editando = it } },
                     onPedido = { pedidoSabor = sabor },
-                    onAjuste = { ajusteSabor = sabor }
+                    onAjuste = { ajusteSabor = sabor },
+                    onReactivar = {
+                        vm.reactivarSabor(sabor.id)
+                    }
                 )
             }
         }
@@ -420,7 +427,7 @@ private fun InventarioScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 editando = null
             },
             onDesactivar = {
-                vm.borrarODesactivarSabor(sabor.id)
+                if (sabor.activo) vm.borrarODesactivarSabor(sabor.id) else vm.reactivarSabor(sabor.id)
                 editando = null
             }
         )
@@ -530,7 +537,8 @@ private fun ConfiguracionScreen(vm: MainViewModel, modifier: Modifier = Modifier
             items(promociones, key = { it.promocion.id }) { promo ->
                 PromocionCard(
                     promocion = promo,
-                    onDesactivar = { vm.desactivarPromocion(promo.promocion.id) }
+                    onDesactivar = { vm.desactivarPromocion(promo.promocion.id) },
+                    onReactivar = { vm.reactivarPromocion(promo.promocion.id) }
                 )
             }
         }
@@ -541,8 +549,8 @@ private fun ConfiguracionScreen(vm: MainViewModel, modifier: Modifier = Modifier
         PromocionDialog(
             sabores = sabores,
             onDismiss = { nuevaPromo = false },
-            onGuardar = { nombre, cantidad, precio, inicio, fin, saborIds ->
-                vm.crearPromocion(nombre, cantidad, precio, inicio, fin, saborIds)
+            onGuardar = { nombre, precio, inicio, fin, saboresPromo ->
+                vm.crearPromocion(nombre, precio, inicio, fin, saboresPromo)
                 nuevaPromo = false
             }
         )
@@ -850,9 +858,7 @@ private fun CategoriaFiltro(categoria: String, onCategoria: (String) -> Unit) {
 private fun SaborVentaCard(
     sabor: SaborEntity,
     resumen: SaborResumen?,
-    promociones: List<PromocionConSabores>,
-    onVenta: () -> Unit,
-    onPromo: () -> Unit
+    onVenta: () -> Unit
 ) {
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -874,14 +880,7 @@ private fun SaborVentaCard(
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onVenta, modifier = Modifier.weight(1f)) { Text("Venta") }
-                OutlinedButton(
-                    onClick = onPromo,
-                    enabled = promociones.isNotEmpty(),
-                    modifier = Modifier.weight(1f)
-                ) { Text("Promoción") }
-            }
+            Button(onClick = onVenta, modifier = Modifier.fillMaxWidth()) { Text("Registrar venta") }
         }
     }
 }
@@ -891,7 +890,8 @@ private fun SaborInventarioCard(
     sabor: SaborResumen,
     onEditar: () -> Unit,
     onPedido: () -> Unit,
-    onAjuste: () -> Unit
+    onAjuste: () -> Unit,
+    onReactivar: () -> Unit
 ) {
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -914,11 +914,15 @@ private fun SaborInventarioCard(
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onEditar, modifier = Modifier.weight(1f)) { Text("Editar") }
-                Button(onClick = onPedido, modifier = Modifier.weight(1f)) { Text("Pedido recibido") }
+            if (sabor.activo) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onEditar, modifier = Modifier.weight(1f)) { Text("Editar") }
+                    Button(onClick = onPedido, modifier = Modifier.weight(1f)) { Text("Pedido recibido") }
+                }
+                OutlinedButton(onClick = onAjuste, modifier = Modifier.fillMaxWidth()) { Text("Ajustar inventario") }
+            } else {
+                Button(onClick = onReactivar, modifier = Modifier.fillMaxWidth()) { Text("Reactivar") }
             }
-            OutlinedButton(onClick = onAjuste, modifier = Modifier.fillMaxWidth()) { Text("Ajustar inventario") }
         }
     }
 }
@@ -959,7 +963,7 @@ private fun EmptyState(texto: String) {
 }
 
 @Composable
-private fun VentaLineasDialog(
+private fun VentaLineasDialogLegacy(
     titulo: String,
     fechaInicial: LocalDate,
     sabores: List<SaborEntity>,
@@ -1144,6 +1148,190 @@ private fun VentaLineasDialog(
 }
 
 @Composable
+private fun VentaLineasDialog(
+    titulo: String,
+    fechaInicial: LocalDate,
+    sabores: List<SaborEntity>,
+    promociones: List<PromocionConSabores>,
+    ventaInicial: VentaConDetalles?,
+    onDismiss: () -> Unit,
+    onGuardar: (LocalDate, PromocionConSabores?, List<VentaLineaInput>) -> Unit
+) {
+    var fechaVenta by remember { mutableStateOf(fechaInicial) }
+    var mostrarCalendario by remember { mutableStateOf(false) }
+    var esPromocion by remember { mutableStateOf(ventaInicial?.venta?.promocionId != null) }
+    var promocionSeleccionada by remember {
+        mutableStateOf(promociones.firstOrNull { it.promocion.id == ventaInicial?.venta?.promocionId })
+    }
+    var selectorLineaId by remember { mutableStateOf<Int?>(null) }
+    val lineas = remember(ventaInicial) {
+        mutableStateListOf<VentaLineaUi>().apply {
+            ventaInicial?.detalles?.forEachIndexed { index, detalle ->
+                add(VentaLineaUi(index + 1, detalle.saborId, detalle.cantidad.toString()))
+            }
+            if (isEmpty()) add(VentaLineaUi(1, null, "1"))
+        }
+    }
+    var siguienteId by remember(ventaInicial) { mutableStateOf(lineas.size + 1) }
+    val totalLineas = lineas.sumOf { it.cantidad.toIntOrNull() ?: 0 }
+    val promocionValida = promocionSeleccionada != null &&
+        promocionSeleccionada!!.ingredientes.isNotEmpty() &&
+        promocionSeleccionada!!.ingredientes.all { ingrediente ->
+            ingrediente.cantidad > 0 && promocionSeleccionada!!.sabores.any { it.id == ingrediente.saborId }
+        } &&
+        promocionSeleccionada!!.ingredientes.sumOf { it.cantidad } == promocionSeleccionada!!.promocion.cantidadUnidades
+    val puedeGuardar = if (esPromocion) {
+        promocionValida
+    } else {
+        lineas.all { it.saborId != null && (it.cantidad.toIntOrNull() ?: 0) > 0 }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(titulo) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Fecha", style = MaterialTheme.typography.bodySmall)
+                            Text(fechaVenta.formatoFechaNegocio(), fontWeight = FontWeight.SemiBold)
+                        }
+                        TextButton(onClick = { mostrarCalendario = true }) { Text("Elegir") }
+                    }
+                }
+                Text("Selecciona el tipo de venta que quieres registrar")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !esPromocion,
+                        onClick = {
+                            esPromocion = false
+                            promocionSeleccionada = null
+                        },
+                        label = { Text("Venta por pieza") }
+                    )
+                    FilterChip(
+                        selected = esPromocion,
+                        onClick = { esPromocion = true },
+                        label = { Text("Venta por promoción") }
+                    )
+                }
+                if (esPromocion) {
+                    val activas = promociones.filter { it.promocion.activa }
+                    Text("Promoción", fontWeight = FontWeight.SemiBold)
+                    if (activas.isEmpty()) {
+                        Text("No hay promociones activas.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            activas.forEach { promo ->
+                                FilterChip(
+                                    selected = promocionSeleccionada?.promocion?.id == promo.promocion.id,
+                                    onClick = { promocionSeleccionada = promo },
+                                    label = {
+                                        Text("${promo.promocion.nombre} - ${promo.promocion.precioPromocional.formatoDinero()}")
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    promocionSeleccionada?.let { promo ->
+                        Text("La promoción registrará automáticamente:", fontWeight = FontWeight.SemiBold)
+                        promo.ingredientes.forEach { ingrediente ->
+                            val sabor = promo.sabores.firstOrNull { it.id == ingrediente.saborId }
+                            Text("${sabor?.nombre ?: "Sabor no disponible"} x${ingrediente.cantidad.formatoUnidades()}")
+                        }
+                        if (!promocionValida) {
+                            Text(
+                                "Esta promoción necesita cantidades por sabor antes de poder venderse.",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                } else {
+                    Text("Selecciona los sabores y cantidades de la venta", fontWeight = FontWeight.SemiBold)
+                    lineas.forEachIndexed { index, linea ->
+                        val sabor = sabores.firstOrNull { it.id == linea.saborId }
+                        OutlinedCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(sabor?.nombre ?: "Elige sabor", fontWeight = FontWeight.SemiBold)
+                                        Text(sabor?.categoria?.nombreCategoria() ?: "Sin seleccionar", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    TextButton(onClick = { selectorLineaId = linea.id }) { Text("Cambiar") }
+                                }
+                                OutlinedTextField(
+                                    value = linea.cantidad,
+                                    onValueChange = { nueva -> lineas[index] = linea.copy(cantidad = nueva.soloEntero()) },
+                                    label = { Text("Bolsas") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                if (lineas.size > 1) {
+                                    TextButton(onClick = { lineas.removeAt(index) }) { Text("Quitar línea") }
+                                }
+                            }
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { lineas.add(VentaLineaUi(siguienteId++, null, "1")) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Agregar sabor") }
+                    Text("Total de bolsas: ${totalLineas.formatoUnidades()}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = puedeGuardar,
+                onClick = {
+                    val inputs = lineas.mapNotNull { linea ->
+                        val sabor = sabores.firstOrNull { it.id == linea.saborId }
+                        val cantidad = linea.cantidad.toIntOrNull()
+                        if (sabor != null && cantidad != null && cantidad > 0) {
+                            VentaLineaInput(sabor, cantidad)
+                        } else null
+                    }
+                    onGuardar(fechaVenta, if (esPromocion) promocionSeleccionada else null, inputs)
+                }
+            ) { Text("Guardar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+
+    if (mostrarCalendario) {
+        FechaPickerDialog(
+            fechaInicial = fechaVenta,
+            onDismiss = { mostrarCalendario = false },
+            onConfirm = { fechaVenta = it; mostrarCalendario = false }
+        )
+    }
+    selectorLineaId?.let { lineaId ->
+        SaborSelectorDialog(
+            sabores = sabores,
+            onDismiss = { selectorLineaId = null },
+            onSeleccionar = { sabor ->
+                val index = lineas.indexOfFirst { it.id == lineaId }
+                if (index >= 0) lineas[index] = lineas[index].copy(saborId = sabor.id)
+                selectorLineaId = null
+            }
+        )
+    }
+}
+
+@Composable
 private fun SaborSelectorDialog(
     sabores: List<SaborEntity>,
     onDismiss: () -> Unit,
@@ -1311,7 +1499,7 @@ private fun SaborDialog(
         dismissButton = {
             Row {
                 onDesactivar?.let {
-                    TextButton(onClick = it) { Text("Desactivar") }
+                    TextButton(onClick = it) { Text(if (sabor?.activo == true) "Desactivar" else "Reactivar") }
                 }
                 TextButton(onClick = onDismiss) { Text("Cancelar") }
             }
@@ -1545,7 +1733,7 @@ private fun MovimientoEditDialog(
 }
 
 @Composable
-private fun PromocionDialog(
+private fun PromocionDialogLegacy(
     sabores: List<SaborEntity>,
     onDismiss: () -> Unit,
     onGuardar: (String, Int, Double, LocalDate, LocalDate?, List<Long>) -> Unit
@@ -1612,6 +1800,111 @@ private fun PromocionDialog(
                         fechaInicio,
                         if (sinFechaFin) null else fechaFin,
                         seleccion.toList()
+                    )
+                }
+            ) { Text("Crear") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+@Composable
+private fun PromocionDialog(
+    sabores: List<SaborEntity>,
+    onDismiss: () -> Unit,
+    onGuardar: (String, Double, LocalDate, LocalDate?, List<PromocionSaborInput>) -> Unit
+) {
+    var nombre by remember { mutableStateOf("") }
+    var precio by remember { mutableStateOf("") }
+    var fechaInicio by remember { mutableStateOf(LocalDate.now()) }
+    var fechaFin by remember { mutableStateOf(LocalDate.now().plusMonths(1)) }
+    var sinFechaFin by remember { mutableStateOf(true) }
+    val cantidades = remember { mutableStateMapOf<Long, String>() }
+    val totalUnidades = cantidades.values.sumOf { it.toIntOrNull() ?: 0 }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Agregar promoción") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = nombre,
+                    onValueChange = { nombre = it },
+                    label = { Text("Nombre") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = precio,
+                    onValueChange = { precio = it.soloDecimal() },
+                    label = { Text("Precio promocional") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                FechaCompacta(
+                    titulo = "Inicio",
+                    fecha = fechaInicio,
+                    onAnterior = { fechaInicio = fechaInicio.minusDays(1) },
+                    onSiguiente = { fechaInicio = fechaInicio.plusDays(1) }
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = sinFechaFin, onCheckedChange = { sinFechaFin = it })
+                    Text("Sin fecha de fin")
+                }
+                if (!sinFechaFin) {
+                    FechaCompacta(
+                        titulo = "Fin",
+                        fecha = fechaFin,
+                        onAnterior = { fechaFin = fechaFin.minusDays(1) },
+                        onSiguiente = { fechaFin = fechaFin.plusDays(1) }
+                    )
+                }
+                Text("Define exactamente cuántas bolsas de cada sabor incluye la promoción.")
+                sabores.forEach { sabor ->
+                    val cantidad = cantidades[sabor.id]
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = cantidad != null,
+                                    onCheckedChange = { seleccionado ->
+                                        if (seleccionado) cantidades[sabor.id] = "1" else cantidades.remove(sabor.id)
+                                    }
+                                )
+                                Text("${sabor.nombre} (${sabor.categoria.nombreCategoria()})")
+                            }
+                            if (cantidad != null) {
+                                OutlinedTextField(
+                                    value = cantidad,
+                                    onValueChange = { cantidades[sabor.id] = it.soloEntero() },
+                                    label = { Text("Bolsas de ${sabor.nombre}") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
+                Text("Total incluido: ${totalUnidades.formatoUnidades()} bolsas")
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = nombre.isNotBlank() && (precio.toDoubleOrNull() ?: -1.0) >= 0.0 && totalUnidades > 0,
+                onClick = {
+                    onGuardar(
+                        nombre,
+                        precio.toDoubleOrNull() ?: 0.0,
+                        fechaInicio,
+                        if (sinFechaFin) null else fechaFin,
+                        cantidades.mapNotNull { (saborId, cantidad) ->
+                            cantidad.toIntOrNull()?.takeIf { it > 0 }?.let { PromocionSaborInput(saborId, it) }
+                        }
                     )
                 }
             ) { Text("Crear") }
@@ -1720,7 +2013,11 @@ private fun Long.aFechaLocal(): LocalDate =
     Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault()).toLocalDate()
 
 @Composable
-private fun PromocionCard(promocion: PromocionConSabores, onDesactivar: () -> Unit) {
+private fun PromocionCard(
+    promocion: PromocionConSabores,
+    onDesactivar: () -> Unit,
+    onReactivar: () -> Unit
+) {
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -1730,10 +2027,15 @@ private fun PromocionCard(promocion: PromocionConSabores, onDesactivar: () -> Un
             Text("${promocion.promocion.cantidadUnidades} bolsas por ${promocion.promocion.precioPromocional.formatoDinero()}")
             Text(
                 if (promocion.sabores.isEmpty()) "Aplica a todos los sabores"
-                else "Sabores: ${promocion.sabores.joinToString { it.nombre }}"
+                else "Sabores: ${promocion.ingredientes.joinToString { ingrediente ->
+                    val sabor = promocion.sabores.firstOrNull { it.id == ingrediente.saborId }
+                    "${sabor?.nombre ?: "Sabor no disponible"} x${ingrediente.cantidad.formatoUnidades()}"
+                }}"
             )
             if (promocion.promocion.activa) {
                 OutlinedButton(onClick = onDesactivar) { Text("Desactivar") }
+            } else {
+                Button(onClick = onReactivar) { Text("Reactivar") }
             }
         }
     }

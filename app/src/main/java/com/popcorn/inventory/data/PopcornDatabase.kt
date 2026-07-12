@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -15,7 +17,7 @@ import androidx.room.RoomDatabase
         DetalleVentaEntity::class,
         MovimientoInventarioEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class PopcornDatabase : RoomDatabase() {
@@ -27,7 +29,22 @@ abstract class PopcornDatabase : RoomDatabase() {
                 context.applicationContext,
                 PopcornDatabase::class.java,
                 "inventario_palomitas.db"
-            ).build()
+            ).addMigrations(MIGRATION_1_2).build()
+        }
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE promocion_sabores ADD COLUMN cantidad INTEGER NOT NULL DEFAULT 1"
+                )
+                database.execSQL(
+                    "UPDATE promocion_sabores SET cantidad = " +
+                        "(SELECT cantidadUnidades FROM promociones " +
+                        "WHERE promociones.id = promocion_sabores.promocionId) " +
+                        "WHERE promocionId IN " +
+                        "(SELECT promocionId FROM promocion_sabores GROUP BY promocionId HAVING COUNT(*) = 1)"
+                )
+            }
         }
     }
 }

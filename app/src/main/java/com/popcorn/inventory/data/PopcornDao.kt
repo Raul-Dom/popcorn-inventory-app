@@ -28,6 +28,9 @@ interface PopcornDao {
     @Query("SELECT * FROM sabores WHERE id = :id")
     suspend fun getSabor(id: Long): SaborEntity?
 
+    @Query("SELECT * FROM sabores WHERE nombre = :nombre COLLATE NOCASE AND categoria = :categoria LIMIT 1")
+    suspend fun findSaborPorNombre(nombre: String, categoria: String): SaborEntity?
+
     @Insert
     suspend fun insertSabor(sabor: SaborEntity): Long
 
@@ -49,6 +52,9 @@ interface PopcornDao {
     @Query("UPDATE sabores SET activo = 0 WHERE id = :saborId")
     suspend fun desactivarSabor(saborId: Long)
 
+    @Query("UPDATE sabores SET activo = 1 WHERE id = :saborId")
+    suspend fun reactivarSabor(saborId: Long)
+
     @Query("UPDATE sabores SET precioVenta = :precio, precioPersonalizado = 1 WHERE id IN (:saborIds)")
     suspend fun actualizarPreciosSeleccion(saborIds: List<Long>, precio: Double)
 
@@ -65,6 +71,9 @@ interface PopcornDao {
     @Query("SELECT * FROM promociones WHERE id = :id")
     suspend fun getPromocion(id: Long): PromocionEntity?
 
+    @Query("SELECT * FROM promociones WHERE nombre = :nombre COLLATE NOCASE LIMIT 1")
+    suspend fun findPromocionPorNombre(nombre: String): PromocionEntity?
+
     @Insert
     suspend fun insertPromocion(promocion: PromocionEntity): Long
 
@@ -73,6 +82,9 @@ interface PopcornDao {
 
     @Query("UPDATE promociones SET activa = 0 WHERE id = :promocionId")
     suspend fun desactivarPromocion(promocionId: Long)
+
+    @Query("UPDATE promociones SET activa = 1 WHERE id = :promocionId")
+    suspend fun reactivarPromocion(promocionId: Long)
 
     @Insert
     suspend fun insertVenta(venta: VentaEntity): Long
@@ -93,11 +105,17 @@ interface PopcornDao {
     @Query("SELECT * FROM ventas WHERE id = :ventaId")
     suspend fun getVentaConDetalles(ventaId: Long): VentaConDetalles?
 
+    @Query("UPDATE ventas SET anulada = 1 WHERE id = :ventaId")
+    suspend fun anularVenta(ventaId: Long)
+
     @Insert
     suspend fun insertMovimiento(movimiento: MovimientoInventarioEntity): Long
 
     @Query("DELETE FROM movimientos_inventario WHERE tipo = :tipo AND referenciaId = :referenciaId")
     suspend fun borrarMovimientosPorReferencia(tipo: String, referenciaId: Long)
+
+    @Query("UPDATE movimientos_inventario SET anulado = 1 WHERE tipo = :tipo AND referenciaId = :referenciaId")
+    suspend fun anularMovimientosPorReferencia(tipo: String, referenciaId: Long)
 
     @Query("SELECT * FROM movimientos_inventario WHERE id = :movimientoId")
     suspend fun getMovimiento(movimientoId: Long): MovimientoInventarioEntity?

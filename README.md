@@ -36,6 +36,16 @@ Primera base del proyecto creada con:
 - Configuración: precios base, promociones y cambios masivos de precio.
 - Reportes: día, semana, mes y rango de fechas.
 
+## Promociones y correcciones
+
+- Cada promoción nueva define cuántas bolsas incluye de cada sabor.
+- Al registrar una venta por promoción, la app usa esa composición automáticamente y no pide capturar sabores ni cantidades otra vez.
+- Las ventas se pueden editar o eliminar en cualquier fecha.
+- Eliminar una venta devuelve las bolsas al inventario y la excluye de reportes.
+- Sabores y promociones inactivos pueden reactivarse desde sus respectivas secciones.
+
+El contexto completo, las decisiones y la evolución del proyecto se mantienen en [STABILIZATION_REPORT.md](STABILIZATION_REPORT.md).
+
 ## Cómo abrir
 
 1. Abre Android Studio.

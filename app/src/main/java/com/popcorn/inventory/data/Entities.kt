@@ -82,7 +82,8 @@ data class PromocionEntity(
 )
 data class PromocionSaborEntity(
     val promocionId: Long,
-    val saborId: Long
+    val saborId: Long,
+    val cantidad: Int = 1
 )
 
 @Entity(tableName = "ventas")
