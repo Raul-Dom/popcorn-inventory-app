@@ -1,6 +1,6 @@
 # Reporte del Proyecto - La Pop-Pería
 
-Actualizado: 12/Julio/26
+Actualizado: 16/Julio/26
 
 Este documento funciona como bitacora humana del proyecto. La idea es poder entender como va evolucionando la app sin revisar commit por commit.
 
@@ -237,3 +237,35 @@ Una version se considera lista para probar cuando:
 - Se puede registrar venta, pedido recibido y ajuste.
 - El inventario cambia de forma esperada.
 - Los reportes muestran informacion coherente.
+
+### Etapa 8 - Promociones flexibles e Histórico
+
+La configuración de promociones se amplió sin cambiar el funcionamiento de las promociones fijas existentes. Ahora una promoción puede ser:
+
+- Fija: sabores y cantidades exactas.
+- Por categorías: requisitos como `1 dulce` y `1 salada`.
+- Por grupo de sabores: cierta cantidad elegida dentro de un grupo configurado, con opción de repetir sabor.
+- Avanzada: varios requisitos combinados, cada uno con categoría, cantidad y permiso de repetición.
+
+Las reglas se guardan en nuevas tablas Room y la base subió de la versión 2 a la 3 mediante `MIGRATION_2_3`. La tabla de enlaces conserva también el `promocionId` para que Room cargue de forma determinista los sabores permitidos de cada promoción.
+
+Se agregó `Histórico` como sección separada. Ventas concentra la captura y el resumen del día; Histórico permite consultar una fecha, revisar el detalle, editar o eliminar una venta. Las ventas promocionales flexibles validan que cada regla esté completa, que los sabores pertenezcan a su categoría o grupo y que se respete la opción de repetir.
+
+Las eliminaciones definitivas de una venta, promoción o sabor se ejecutan dentro de transacciones Room. Antes de borrar una venta se devuelve su inventario si estaba activa, se limpian sus movimientos y detalles, y después se elimina el registro. Eliminar una promoción o sabor aplica la misma limpieza a sus ventas relacionadas.
+
+## Versión 1.4 - Estado de esta actualización
+
+- Código: esta actualización queda incluida en el commit de la versión 1.4.
+- Base Room: versión 3 con migración desde la versión 2.
+- APK: debe generarse desde el workflow `Generar APK Android` después del push.
+- Riesgo principal: esta etapa amplía reglas y eliminaciones; debe probarse con datos falsos antes de usar datos reales.
+
+## Pruebas adicionales de la Etapa 8
+
+1. Crear una promoción fija de `Caramelo x1` y `Queso x1`; venderla y comprobar dos descuentos.
+2. Crear una promoción por categorías de `1 dulce + 1 salada`; comprobar que el selector solo permita esas categorías.
+3. Crear una promoción por grupo de dos sabores permitidos; comprobar repetir y no repetir.
+4. Crear una promoción avanzada con `2 dulces + 1 salada`; comprobar que no permita guardar incompleta.
+5. Registrar una venta por pieza con varias líneas y verla en Histórico.
+6. Editar una venta promocional y una venta por pieza desde Histórico; comprobar inventario y reportes.
+7. Eliminar una venta, una promoción y un sabor de prueba; comprobar confirmación, inventario y relaciones.

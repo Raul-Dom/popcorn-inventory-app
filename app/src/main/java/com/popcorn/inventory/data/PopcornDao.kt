@@ -80,11 +80,20 @@ interface PopcornDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPromocionSabores(sabores: List<PromocionSaborEntity>)
 
+    @Insert
+    suspend fun insertPromocionReglas(reglas: List<PromocionReglaEntity>): List<Long>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPromocionReglaSabores(sabores: List<PromocionReglaSaborEntity>)
+
     @Query("UPDATE promociones SET activa = 0 WHERE id = :promocionId")
     suspend fun desactivarPromocion(promocionId: Long)
 
     @Query("UPDATE promociones SET activa = 1 WHERE id = :promocionId")
     suspend fun reactivarPromocion(promocionId: Long)
+
+    @Query("DELETE FROM promociones WHERE id = :promocionId")
+    suspend fun borrarPromocion(promocionId: Long)
 
     @Insert
     suspend fun insertVenta(venta: VentaEntity): Long
@@ -108,6 +117,23 @@ interface PopcornDao {
     @Query("UPDATE ventas SET anulada = 1 WHERE id = :ventaId")
     suspend fun anularVenta(ventaId: Long)
 
+    @Query("DELETE FROM ventas WHERE id = :ventaId")
+    suspend fun borrarVenta(ventaId: Long)
+
+    @Transaction
+    @Query("SELECT * FROM ventas WHERE promocionId = :promocionId")
+    suspend fun getVentasPorPromocion(promocionId: Long): List<VentaConDetalles>
+
+    @Transaction
+    @Query("SELECT * FROM ventas WHERE id IN (SELECT DISTINCT ventaId FROM detalle_ventas WHERE saborId = :saborId)")
+    suspend fun getVentasPorSabor(saborId: Long): List<VentaConDetalles>
+
+    @Query("SELECT DISTINCT promocionId FROM promocion_sabores WHERE saborId = :saborId")
+    suspend fun getPromocionesPorSabor(saborId: Long): List<Long>
+
+    @Query("SELECT DISTINCT promocionId FROM promocion_reglas WHERE id IN (SELECT reglaId FROM promocion_regla_sabores WHERE saborId = :saborId)")
+    suspend fun getPromocionesPorSaborEnReglas(saborId: Long): List<Long>
+
     @Insert
     suspend fun insertMovimiento(movimiento: MovimientoInventarioEntity): Long
 
@@ -116,6 +142,12 @@ interface PopcornDao {
 
     @Query("UPDATE movimientos_inventario SET anulado = 1 WHERE tipo = :tipo AND referenciaId = :referenciaId")
     suspend fun anularMovimientosPorReferencia(tipo: String, referenciaId: Long)
+
+    @Query("DELETE FROM movimientos_inventario WHERE tipo = :tipo AND referenciaId = :referenciaId")
+    suspend fun borrarMovimientosPorReferenciaFisicamente(tipo: String, referenciaId: Long)
+
+    @Query("DELETE FROM movimientos_inventario WHERE saborId = :saborId")
+    suspend fun borrarMovimientosPorSabor(saborId: Long)
 
     @Query("SELECT * FROM movimientos_inventario WHERE id = :movimientoId")
     suspend fun getMovimiento(movimientoId: Long): MovimientoInventarioEntity?

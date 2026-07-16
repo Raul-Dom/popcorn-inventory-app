@@ -26,6 +26,18 @@ object TipoMovimiento {
     const val OTRO_AJUSTE = "OTRO_AJUSTE"
 }
 
+object TipoPromocion {
+    const val FIJA = "FIJA"
+    const val CATEGORIAS = "CATEGORIAS"
+    const val GRUPO_SABORES = "GRUPO_SABORES"
+    const val AVANZADA = "AVANZADA"
+}
+
+object AlcanceReglaPromocion {
+    const val CATEGORIA = "CATEGORIA"
+    const val SABORES = "SABORES"
+}
+
 @Entity(tableName = "sabores")
 data class SaborEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -57,6 +69,7 @@ data class PromocionEntity(
     val precioPromocional: Double,
     val fechaInicio: Long,
     val fechaFin: Long?,
+    val tipo: String = TipoPromocion.FIJA,
     val activa: Boolean = true,
     val creadaEn: Long = System.currentTimeMillis()
 )
@@ -78,12 +91,59 @@ data class PromocionEntity(
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("saborId")]
+    indices = [Index("promocionId"), Index("saborId")]
 )
 data class PromocionSaborEntity(
     val promocionId: Long,
     val saborId: Long,
     val cantidad: Int = 1
+)
+
+@Entity(
+    tableName = "promocion_reglas",
+    foreignKeys = [
+        ForeignKey(
+            entity = PromocionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["promocionId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("promocionId")]
+)
+data class PromocionReglaEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val promocionId: Long,
+    val alcance: String,
+    val categoria: String?,
+    val cantidad: Int,
+    val permiteRepetir: Boolean,
+    val orden: Int
+)
+
+@Entity(
+    tableName = "promocion_regla_sabores",
+    primaryKeys = ["reglaId", "saborId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = PromocionReglaEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["reglaId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = SaborEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["saborId"],
+            onDelete = ForeignKey.RESTRICT
+        )
+    ],
+    indices = [Index("promocionId"), Index("saborId")]
+)
+data class PromocionReglaSaborEntity(
+    val reglaId: Long,
+    val promocionId: Long,
+    val saborId: Long
 )
 
 @Entity(tableName = "ventas")

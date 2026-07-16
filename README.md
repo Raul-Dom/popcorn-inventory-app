@@ -27,24 +27,35 @@ Primera base del proyecto creada con:
 - `Cortesía / regalo al cliente` resta inventario.
 - `Merma / dañado` resta inventario.
 - `Corrección de conteo` puede sumar o restar.
-- Las promociones se crean y se pueden desactivar; no se borran del historial.
+- Las promociones se pueden crear, desactivar, reactivar y eliminar definitivamente con confirmación.
 
 ## Secciones
 
 - Ventas: registro de venta normal o con promoción.
 - Inventario: sabores, pedido sugerido, pedido recibido y ajustes.
 - Configuración: precios base, promociones y cambios masivos de precio.
+- Histórico: ventas de cualquier fecha, edición y eliminación con confirmación.
 - Reportes: día, semana, mes y rango de fechas.
 
 ## Promociones y correcciones
 
-- Cada promoción nueva define cuántas bolsas incluye de cada sabor.
-- Al registrar una venta por promoción, la app usa esa composición automáticamente y no pide capturar sabores ni cantidades otra vez.
+- Las promociones pueden ser fijas, por categorías, por grupo de sabores permitidos o avanzadas.
+- Una promoción fija define sabores y cantidades exactas; una promoción flexible guarda reglas y pide solo los sabores necesarios al vender.
+- Al registrar una venta por promoción, la app calcula las bolsas y el precio desde la configuración guardada.
 - Las ventas se pueden editar o eliminar en cualquier fecha.
 - Eliminar una venta devuelve las bolsas al inventario y la excluye de reportes.
 - Sabores y promociones inactivos pueden reactivarse desde sus respectivas secciones.
+- Eliminar definitivamente un sabor elimina sus registros relacionados; requiere confirmación y no se puede deshacer.
 
 El contexto completo, las decisiones y la evolución del proyecto se mantienen en [STABILIZATION_REPORT.md](STABILIZATION_REPORT.md).
+
+## Actualización 1.4
+
+- Se agregó el módulo Histórico para consultar ventas por fecha sin saturar la captura diaria.
+- Las ventas históricas se pueden editar o eliminar; al corregirlas se ajusta el inventario y al eliminarlas se devuelven las bolsas.
+- Las promociones ahora soportan reglas por categoría, grupos de sabores permitidos y combinaciones avanzadas.
+- Room se actualizó a la versión 3 con tablas para reglas de promociones y una migración compatible con instalaciones existentes.
+- Las eliminaciones definitivas de promociones y sabores limpian sus relaciones, movimientos y ventas asociadas con confirmación.
 
 ## Cómo abrir
 

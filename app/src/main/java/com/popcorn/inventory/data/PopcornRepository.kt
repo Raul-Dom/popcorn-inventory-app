@@ -124,10 +124,25 @@ class PopcornRepository(
         precioPromocional: Double,
         fechaInicio: Long,
         fechaFin: Long?,
-        sabores: List<PromocionSaborInput>
+        tipo: String,
+        sabores: List<PromocionSaborInput>,
+        reglas: List<PromocionReglaInput>
     ) {
-        require(sabores.isNotEmpty()) { "La promoción debe definir al menos un sabor." }
+        val cantidadUnidades = when (tipo) {
+            TipoPromocion.FIJA -> {
+                require(sabores.isNotEmpty()) { "La promoción fija debe definir sabores." }
+                require(reglas.isEmpty()) { "La promoción fija no necesita reglas." }
+                sabores.sumOf { it.cantidad }
+            }
+            else -> {
+                require(sabores.isEmpty()) { "Las promociones flexibles usan reglas, no sabores incluidos." }
+                require(reglas.isNotEmpty()) { "La promoción debe definir al menos una regla." }
+                reglas.sumOf { it.cantidad }
+            }
+        }
+        require(cantidadUnidades > 0) { "La promoción debe incluir bolsas." }
         require(sabores.all { it.cantidad > 0 }) { "Todas las cantidades de la promoción deben ser mayores a cero." }
+        require(reglas.all { it.cantidad > 0 }) { "Todas las reglas deben tener una cantidad mayor a cero." }
         val nombreLimpio = nombre.trim()
         database.withTransaction {
             val existente = dao.findPromocionPorNombre(nombreLimpio)
@@ -135,19 +150,39 @@ class PopcornRepository(
                 dao.reactivarPromocion(existente.id)
                 return@withTransaction
             }
-            val cantidadUnidades = sabores.sumOf { it.cantidad }
             val promocionId = dao.insertPromocion(
                 PromocionEntity(
                     nombre = nombreLimpio,
                     cantidadUnidades = cantidadUnidades,
                     precioPromocional = precioPromocional,
                     fechaInicio = fechaInicio,
-                    fechaFin = fechaFin
+                    fechaFin = fechaFin,
+                    tipo = tipo
                 )
             )
             dao.insertPromocionSabores(
                 sabores.map { PromocionSaborEntity(promocionId, it.saborId, it.cantidad) }
             )
+            if (reglas.isNotEmpty()) {
+                val ids = dao.insertPromocionReglas(
+                    reglas.mapIndexed { index, regla ->
+                        PromocionReglaEntity(
+                            promocionId = promocionId,
+                            alcance = regla.alcance,
+                            categoria = regla.categoria,
+                            cantidad = regla.cantidad,
+                            permiteRepetir = regla.permiteRepetir,
+                            orden = index
+                        )
+                    }
+                )
+                val enlaces = reglas.flatMapIndexed { index, regla ->
+                    regla.saborIds.map { saborId ->
+                        PromocionReglaSaborEntity(ids[index], promocionId, saborId)
+                    }
+                }
+                if (enlaces.isNotEmpty()) dao.insertPromocionReglaSabores(enlaces)
+            }
         }
     }
 
@@ -206,10 +241,12 @@ class PopcornRepository(
 
     suspend fun registrarVentaPromocion(
         promocion: PromocionConSabores,
+        selecciones: List<PromocionSeleccionInput>,
+        sabores: List<SaborEntity>,
         fechaVenta: Long
     ) {
         registrarVentaLineas(
-            lineas = lineasDePromocion(promocion),
+            lineas = lineasDePromocion(promocion, selecciones, sabores),
             fechaVenta = fechaVenta,
             promocion = promocion.promocion
         )
@@ -219,9 +256,13 @@ class PopcornRepository(
         ventaOriginal: VentaEntity,
         nuevasLineas: List<VentaLineaInput>,
         nuevaFechaVenta: Long,
-        promocion: PromocionConSabores?
+        promocion: PromocionConSabores?,
+        selecciones: List<PromocionSeleccionInput>,
+        sabores: List<SaborEntity>
     ) {
-        val lineasFinales = if (promocion != null) lineasDePromocion(promocion) else nuevasLineas
+        val lineasFinales = if (promocion != null) {
+            lineasDePromocion(promocion, selecciones, sabores)
+        } else nuevasLineas
         require(lineasFinales.isNotEmpty()) { "La venta debe tener al menos un sabor." }
         require(lineasFinales.all { it.cantidad > 0 }) { "Todas las cantidades deben ser mayores a cero." }
         database.withTransaction {
@@ -263,12 +304,27 @@ class PopcornRepository(
     suspend fun eliminarVenta(ventaId: Long) {
         database.withTransaction {
             val venta = dao.getVentaConDetalles(ventaId) ?: return@withTransaction
-            if (venta.venta.anulada) return@withTransaction
-            venta.detalles.forEach { detalle ->
-                dao.sumarInventario(detalle.saborId, detalle.cantidad)
+            borrarVentaFisicamente(venta)
+        }
+    }
+
+    suspend fun eliminarPromocion(promocionId: Long) {
+        database.withTransaction {
+            dao.getVentasPorPromocion(promocionId).forEach { borrarVentaFisicamente(it) }
+            dao.borrarPromocion(promocionId)
+        }
+    }
+
+    suspend fun eliminarSabor(saborId: Long) {
+        database.withTransaction {
+            val promocionIds = (dao.getPromocionesPorSabor(saborId) + dao.getPromocionesPorSaborEnReglas(saborId)).distinct()
+            promocionIds.forEach { promocionId ->
+                dao.getVentasPorPromocion(promocionId).forEach { borrarVentaFisicamente(it) }
+                dao.borrarPromocion(promocionId)
             }
-            dao.anularVenta(ventaId)
-            dao.anularMovimientosPorReferencia(TipoMovimiento.VENTA, ventaId)
+            dao.getVentasPorSabor(saborId).forEach { borrarVentaFisicamente(it) }
+            dao.borrarMovimientosPorSabor(saborId)
+            dao.borrarSabor(saborId)
         }
     }
 
@@ -368,7 +424,57 @@ class PopcornRepository(
         )
     }
 
-    private fun lineasDePromocion(promocion: PromocionConSabores): List<VentaLineaInput> {
+    private suspend fun borrarVentaFisicamente(venta: VentaConDetalles) {
+        if (!venta.venta.anulada) {
+            venta.detalles.forEach { detalle ->
+                dao.sumarInventario(detalle.saborId, detalle.cantidad)
+            }
+        }
+        dao.borrarMovimientosPorReferenciaFisicamente(TipoMovimiento.VENTA, venta.venta.id)
+        dao.borrarDetallesVenta(venta.venta.id)
+        dao.borrarVenta(venta.venta.id)
+    }
+
+    private fun lineasDePromocion(
+        promocion: PromocionConSabores,
+        selecciones: List<PromocionSeleccionInput>,
+        sabores: List<SaborEntity>
+    ): List<VentaLineaInput> {
+        if (promocion.promocion.tipo != TipoPromocion.FIJA) {
+            val reglasPorId = promocion.reglas.associateBy { it.id }
+            val saboresPorId = sabores.associateBy { it.id }
+            val idsPorRegla = promocion.saboresDeReglas.groupBy { it.reglaId }.mapValues { (_, links) -> links.map { it.saborId }.toSet() }
+            val cantidades = mutableMapOf<Long, Int>()
+            promocion.reglas.forEach { regla ->
+                val seleccion = selecciones.firstOrNull { it.reglaId == regla.id }
+                    ?: error("Completa todos los requisitos de la promoción.")
+                require(seleccion.saborIds.size == regla.cantidad) { "Completa todas las bolsas de la regla." }
+                if (!regla.permiteRepetir) require(seleccion.saborIds.distinct().size == seleccion.saborIds.size) {
+                    "Esta regla no permite repetir sabores."
+                }
+                seleccion.saborIds.forEach { saborId ->
+                    val sabor = saboresPorId[saborId] ?: error("El sabor seleccionado ya no existe.")
+                    if (regla.alcance == AlcanceReglaPromocion.CATEGORIA) {
+                        require(sabor.categoria == regla.categoria) { "El sabor no pertenece a la categoría requerida." }
+                    } else {
+                        require(saborId in (idsPorRegla[regla.id].orEmpty())) { "El sabor no pertenece al grupo permitido." }
+                    }
+                    cantidades[saborId] = (cantidades[saborId] ?: 0) + 1
+                }
+            }
+            require(selecciones.map { it.reglaId }.distinct().size == reglasPorId.size) {
+                "La selección de la promoción está incompleta."
+            }
+            val total = promocion.promocion.cantidadUnidades
+            require(cantidades.values.sum() == total) { "La promoción no coincide con sus reglas." }
+            return cantidades.map { (saborId, cantidad) ->
+                VentaLineaInput(
+                    sabor = saboresPorId.getValue(saborId),
+                    cantidad = cantidad,
+                    precioUnitario = promocion.promocion.precioPromocional / total
+                )
+            }
+        }
         val saborPorId = promocion.sabores.associateBy { it.id }
         val ingredientes = promocion.ingredientes
         val totalDefinido = ingredientes.sumOf { it.cantidad }

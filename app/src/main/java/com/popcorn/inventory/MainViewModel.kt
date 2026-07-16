@@ -10,6 +10,8 @@ import com.popcorn.inventory.data.ConfiguracionEntity
 import com.popcorn.inventory.data.MovimientoInventarioEntity
 import com.popcorn.inventory.data.PopcornRepository
 import com.popcorn.inventory.data.PromocionConSabores
+import com.popcorn.inventory.data.PromocionReglaInput
+import com.popcorn.inventory.data.PromocionSeleccionInput
 import com.popcorn.inventory.data.PromocionSaborInput
 import com.popcorn.inventory.data.ReporteResumen
 import com.popcorn.inventory.data.SaborEntity
@@ -134,9 +136,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun registrarVentaPromocion(promocion: PromocionConSabores, fecha: LocalDate) {
+    fun registrarVentaPromocion(
+        promocion: PromocionConSabores,
+        selecciones: List<PromocionSeleccionInput>,
+        fecha: LocalDate
+    ) {
         viewModelScope.launch {
-            repository.registrarVentaPromocion(promocion, fecha.alInicioDelDiaMillis())
+            repository.registrarVentaPromocion(promocion, selecciones, sabores.value, fecha.alInicioDelDiaMillis())
         }
     }
 
@@ -144,16 +150,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         venta: VentaEntity,
         lineas: List<VentaLineaInput>,
         fecha: LocalDate,
-        promocion: PromocionConSabores?
+        promocion: PromocionConSabores?,
+        selecciones: List<PromocionSeleccionInput>
     ) {
         viewModelScope.launch {
-            repository.actualizarVenta(venta, lineas, fecha.alInicioDelDiaMillis(), promocion)
+            repository.actualizarVenta(venta, lineas, fecha.alInicioDelDiaMillis(), promocion, selecciones, sabores.value)
         }
     }
 
     fun eliminarVenta(ventaId: Long) {
         viewModelScope.launch {
             repository.eliminarVenta(ventaId)
+        }
+    }
+
+    fun eliminarSabor(saborId: Long) {
+        viewModelScope.launch {
+            repository.eliminarSabor(saborId)
         }
     }
 
@@ -208,7 +221,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         precio: Double,
         inicio: LocalDate,
         fin: LocalDate?,
-        sabores: List<PromocionSaborInput>
+        tipo: String,
+        sabores: List<PromocionSaborInput>,
+        reglas: List<PromocionReglaInput>
     ) {
         viewModelScope.launch {
             repository.crearPromocion(
@@ -216,7 +231,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 precioPromocional = precio,
                 fechaInicio = inicio.alInicioDelDiaMillis(),
                 fechaFin = fin?.alFinalDelDiaMillis(),
-                sabores = sabores
+                tipo = tipo,
+                sabores = sabores,
+                reglas = reglas
             )
         }
     }
@@ -230,6 +247,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun reactivarPromocion(promocionId: Long) {
         viewModelScope.launch {
             repository.reactivarPromocion(promocionId)
+        }
+    }
+
+    fun eliminarPromocion(promocionId: Long) {
+        viewModelScope.launch {
+            repository.eliminarPromocion(promocionId)
         }
     }
 

@@ -22,6 +22,16 @@ data class PromocionConSabores(
     val ingredientes: List<PromocionSaborEntity>,
     @Relation(
         parentColumn = "id",
+        entityColumn = "promocionId"
+    )
+    val reglas: List<PromocionReglaEntity>,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "promocionId"
+    )
+    val saboresDeReglas: List<PromocionReglaSaborEntity>,
+    @Relation(
+        parentColumn = "id",
         entityColumn = "id",
         associateBy = Junction(
             value = PromocionSaborEntity::class,
@@ -67,4 +77,17 @@ data class VentaLineaInput(
 data class PromocionSaborInput(
     val saborId: Long,
     val cantidad: Int
+)
+
+data class PromocionReglaInput(
+    val alcance: String,
+    val categoria: String?,
+    val cantidad: Int,
+    val permiteRepetir: Boolean,
+    val saborIds: List<Long> = emptyList()
+)
+
+data class PromocionSeleccionInput(
+    val reglaId: Long,
+    val saborIds: List<Long>
 )
