@@ -260,6 +260,10 @@ Las eliminaciones definitivas de una venta, promoción o sabor se ejecutan dentr
 - APK: debe generarse desde el workflow `Generar APK Android` después del push.
 - Riesgo principal: esta etapa amplía reglas y eliminaciones; debe probarse con datos falsos antes de usar datos reales.
 
+## Auditoría del commit 5e81f10
+
+La revisión confirmó que `main` y `origin/main` apuntaban al mismo commit. Se detectó y corrigió la declaración incompleta de la clave foránea `promocionId` en `PromocionReglaSaborEntity`; la migración ya la creaba, así que ambas definiciones deben coincidir para que Room valide correctamente una base existente. También se corrigió el texto de configuración para describir reglas de categorías y grupos en lugar de mostrar un alcance incorrecto.
+
 ## Pruebas adicionales de la Etapa 8
 
 1. Crear una promoción fija de `Caramelo x1` y `Queso x1`; venderla y comprobar dos descuentos.

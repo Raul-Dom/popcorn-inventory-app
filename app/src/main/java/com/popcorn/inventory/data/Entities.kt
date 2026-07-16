@@ -91,7 +91,7 @@ data class PromocionEntity(
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("promocionId"), Index("saborId")]
+    indices = [Index("saborId")]
 )
 data class PromocionSaborEntity(
     val promocionId: Long,
@@ -136,6 +136,12 @@ data class PromocionReglaEntity(
             parentColumns = ["id"],
             childColumns = ["saborId"],
             onDelete = ForeignKey.RESTRICT
+        ),
+        ForeignKey(
+            entity = PromocionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["promocionId"],
+            onDelete = ForeignKey.CASCADE
         )
     ],
     indices = [Index("promocionId"), Index("saborId")]

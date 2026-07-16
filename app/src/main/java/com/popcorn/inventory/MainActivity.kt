@@ -2679,13 +2679,21 @@ private fun PromocionCard(
                 Text(if (promocion.promocion.activa) "Activa" else "Inactiva")
             }
             Text("${promocion.promocion.cantidadUnidades} bolsas por ${promocion.promocion.precioPromocional.formatoDinero()}")
-            Text(
-                if (promocion.sabores.isEmpty()) "Aplica a todos los sabores"
-                else "Sabores: ${promocion.ingredientes.joinToString { ingrediente ->
+            val descripcion = when (promocion.promocion.tipo) {
+                TipoPromocion.FIJA -> "Sabores: ${promocion.ingredientes.joinToString { ingrediente ->
                     val sabor = promocion.sabores.firstOrNull { it.id == ingrediente.saborId }
                     "${sabor?.nombre ?: "Sabor no disponible"} x${ingrediente.cantidad.formatoUnidades()}"
                 }}"
-            )
+                TipoPromocion.GRUPO_SABORES -> "Grupo permitido: ${promocion.saboresDeReglas
+                    .mapNotNull { enlace -> promocion.sabores.firstOrNull { it.id == enlace.saborId }?.nombre }
+                    .distinct()
+                    .joinToString()}"
+                else -> "Reglas: ${promocion.reglas.sortedBy { it.orden }.joinToString { regla ->
+                    val categoria = regla.categoria?.nombreCategoria() ?: "sabores permitidos"
+                    "${regla.cantidad.formatoUnidades()} de $categoria"
+                }}"
+            }
+            Text(descripcion)
             if (promocion.promocion.activa) {
                 OutlinedButton(onClick = onDesactivar) { Text("Desactivar") }
             } else {
